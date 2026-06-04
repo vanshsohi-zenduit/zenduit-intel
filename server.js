@@ -9,6 +9,7 @@ import Groq from 'groq-sdk';
 import fs from 'fs';
 import path from 'path';
 import { bootstrapNotebookLM, getCompanyIntelFromNotebooks, isReady as nlmReady } from './notebooklm.js';
+import { bootstrapLinkedInMCP, getLinkedInCompanyData, getLinkedInPersonData, isReady as linkedinReady } from './linkedin.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -21,26 +22,45 @@ const GROQ_KEYS = [
   process.env.GROQ_API_KEY,
   process.env.GROQ_API_KEY_2,
   process.env.GROQ_API_KEY_3,
+  process.env.GROQ_API_KEY_4,
+  process.env.GROQ_API_KEY_5,
 ].filter(Boolean);
 
 let activeKeyIdx = 0;
 const getGroq = () => new Groq({ apiKey: GROQ_KEYS[activeKeyIdx] });
 
-// Rotate to next key on rate-limit errors, returns a Groq client
+// Delay helper
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// Serial queue — ensures Groq calls are staggered to avoid token/min bursts.
+// Each call waits for the previous to finish + 2.5 s before starting.
+let _queue = Promise.resolve();
+
 const groqWithFallback = async (fn) => {
-  for (let attempt = 0; attempt < GROQ_KEYS.length; attempt++) {
-    try {
-      return await fn(new Groq({ apiKey: GROQ_KEYS[activeKeyIdx] }));
-    } catch (err) {
-      const isRateLimit = err?.status === 429 || err?.message?.includes('rate') || err?.message?.includes('quota');
-      if (isRateLimit && attempt < GROQ_KEYS.length - 1) {
-        activeKeyIdx = (activeKeyIdx + 1) % GROQ_KEYS.length;
-        console.warn(`[Groq] Rate limit on key ${attempt + 1}, rotating to key ${activeKeyIdx + 1}`);
-        continue;
+  const run = async () => {
+    for (let attempt = 0; attempt < GROQ_KEYS.length; attempt++) {
+      try {
+        const result = await fn(new Groq({ apiKey: GROQ_KEYS[activeKeyIdx] }));
+        await delay(2500); // stagger before the next call can start
+        return result;
+      } catch (err) {
+        const isRateLimit = err?.status === 429
+          || err?.message?.includes('rate')
+          || err?.message?.includes('quota');
+        if (isRateLimit && attempt < GROQ_KEYS.length - 1) {
+          activeKeyIdx = (activeKeyIdx + 1) % GROQ_KEYS.length;
+          console.warn(`[Groq] Rate limit — rotating to key ${activeKeyIdx + 1}`);
+          await delay(3000); // penalty wait before retry on new key
+          continue;
+        }
+        throw err;
       }
-      throw err;
     }
-  }
+  };
+
+  // Chain onto the shared queue so calls execute serially
+  _queue = _queue.then(run, run);
+  return _queue;
 };
 
 const groq  = getGroq();
@@ -276,11 +296,42 @@ app.post('/api/generate', async (req, res) => {
       sseWrite(res, 'phase', { phase: 1, label: 'Product Intelligence', status: 'skip' });
     }
 
+    // ── Phase 1.5: LinkedIn MCP Intelligence ────────────────────────────
+    let linkedinContext = '';
+    if (linkedinReady() && linkedinUrl) {
+      sseWrite(res, 'phase', { phase: 1.5, label: 'LinkedIn Intelligence', status: 'start' });
+      try {
+        // We'll try to fetch company data if it looks like a company, but linkedinUrl could be a person.
+        // For simplicity, we try fetching whatever the URL points to. We can try company first, if error try person.
+        let linkedinData = await getLinkedInCompanyData(linkedinUrl);
+        let type = 'Company';
+        
+        // If no company data or it contains an error indicating it's not a company
+        if (!linkedinData || !linkedinData.profile || typeof linkedinData.profile === 'string') {
+           linkedinData = await getLinkedInPersonData(linkedinUrl);
+           type = 'Person/Contact';
+        }
+        
+        if (linkedinData && linkedinData.profile && typeof linkedinData.profile !== 'string') {
+          linkedinContext = `LINKEDIN DATA (${type}):\nProfile Info:\n${JSON.stringify(linkedinData.profile, null, 2)}\n\nRecent Posts:\n${JSON.stringify(linkedinData.posts, null, 2)}`;
+          sseWrite(res, 'phase', { phase: 1.5, label: 'LinkedIn Intelligence', status: 'complete' });
+        } else {
+          sseWrite(res, 'phase', { phase: 1.5, label: 'LinkedIn Intelligence', status: 'skip' });
+        }
+      } catch (e) {
+        console.error('[LinkedIn Phase Error]:', e);
+        sseWrite(res, 'phase', { phase: 1.5, label: 'LinkedIn Intelligence', status: 'skip' });
+      }
+    } else {
+      sseWrite(res, 'phase', { phase: 1.5, label: 'LinkedIn Intelligence', status: 'skip' });
+    }
+
     // ── Phase 2: Web Research ─────────────────────────────────────────────
     sseWrite(res, 'phase', { phase: 2, label: 'Prospect Research', status: 'start' });
 
     const researchSystem = `You are an elite B2B sales intelligence analyst for Zenduit, a fleet telematics company.
-Use web_search and web_fetch aggressively to build deep sales intelligence. Always fetch the actual company website AND LinkedIn signals.
+Use web_search and web_fetch aggressively to build deep sales intelligence. Always fetch the actual company website.
+For contact discovery: search LinkedIn by name+title, fetch /about and /team pages, and construct email guesses from the domain pattern. Never output "Unknown" when you can make a reasonable inference or guess.
 After all research, return ONLY a valid JSON object — no markdown, no explanation, just the JSON.`;
 
     const researchPrompt = `
@@ -292,14 +343,15 @@ TARGET COMPANY:
 ZENDUIT CONTEXT:
 ${ZENDUIT_CONTEXT}
 ${notebooklmContext ? `\nINTERNAL SALES INTELLIGENCE (from Zenduit NotebookLM database):\n${notebooklmContext}` : ''}
+${linkedinContext ? `\n${linkedinContext}` : ''}
 
 Research this company thoroughly using web_search and web_fetch. Follow ALL these steps:
 
 1. WEBSITE: Fetch their main website to understand their business, fleet/transportation operations, and service areas.
 
 2. LINKEDIN SIGNALS:
-   ${linkedinUrl ? `- Fetch this LinkedIn URL: ${linkedinUrl} — extract recent posts, announcements, hiring signals, what they're talking about publicly.` : `- Search "${companyName || 'the company'} site:linkedin.com" to find their LinkedIn page and recent activity.`}
-   - Search "${companyName || 'the company'} LinkedIn recent posts announcements" for any public activity.
+   ${linkedinContext ? `- You already have deep LinkedIn structured data above. Review the extracted profile info and posts.` : (linkedinUrl ? `- Fetch this LinkedIn URL: ${linkedinUrl} — extract recent posts, announcements.` : `- Search "${companyName || 'the company'} site:linkedin.com" to find their LinkedIn page.`)}
+   - Synthesize hiring signals, what they're talking about publicly, and fleet size indications from the data.
 
 3. RECENT NEWS & TRIGGERS:
    - Search "${companyName || 'the company'} press release OR expansion OR acquisition OR funding 2025 2026".
@@ -315,12 +367,17 @@ Research this company thoroughly using web_search and web_fetch. Follow ALL thes
 6. INDUSTRY TRENDS:
    - Search "${companyName ? (companyName + ' industry') : 'fleet'} telematics trends 2025 2026" for 2-3 relevant macro trends.
 
-7. DECISION MAKER & CONTACT:
-   - Search "${companyName || 'the company'} VP Operations OR Fleet Manager OR Director Safety OR CTO LinkedIn" to find the best contact.
-   - Try to find their name, title, email format, and direct phone from their website contact page or LinkedIn.
-   - Search "${companyName || 'the company'} contact email phone" to find a general or direct contact.
-   - Search "${companyName || 'the company'} fleet management software OR telematics platform" to identify their current fleet system.
-   - Identify what types of vehicles/assets they operate (trucks, vans, buses, equipment, etc).
+7. DECISION MAKER & CONTACT — this is critical, do all of these:
+   a) Search "${companyName || 'the company'} VP Operations OR Fleet Manager OR Director of Safety OR Director of Logistics site:linkedin.com" — find a real person's name and title.
+   b) Search "${companyName || 'the company'} "fleet manager" OR "VP operations" OR "director of logistics" contact" — look for a name in results.
+   c) Fetch the company website's /about, /team, /contact, or /leadership page if it exists — extract any staff names and titles.
+   d) Search "${companyName || 'the company'} "fleet" OR "operations" email" to find any email contacts.
+   e) Once you have a name, guess the email using common patterns: firstname@domain.com, firstname.lastname@domain.com, flastname@domain.com — use the company's website domain.
+   f) Search "${companyName || 'the company'} phone number" or fetch their /contact page for a direct line.
+   g) Search "${companyName || 'the company'} telematics OR GPS tracking OR fleet management platform" to identify what system they use today.
+   h) Identify the types of vehicles/assets they operate (trucks, vans, trailers, equipment, buses, etc.) from their website or news.
+
+   IMPORTANT: Never output "Unknown" for contactName if you found any name at all. Always make a best guess. If you can't find an exact email, construct the most likely one from their domain. If you find a general company phone, use it.
 
 Return ONLY this JSON (no markdown fences):
 {
@@ -371,22 +428,33 @@ Return ONLY this JSON (no markdown fences):
     // ── Phase 3: Strategy Generation ──────────────────────────────────────
     sseWrite(res, 'phase', { phase: 3, label: 'Strategy Generation', status: 'start' });
 
+    // Sanitize intel values — treat "Unknown"/"N/A"/empty as missing
+    const clean = (v, fallback = null) => {
+      if (!v) return fallback;
+      const s = String(v).trim();
+      if (!s || s.toLowerCase() === 'unknown' || s.toLowerCase() === 'n/a' || s.toLowerCase() === 'none') return fallback;
+      return s;
+    };
+    const cleanArr = (a, fallback = []) => Array.isArray(a) ? a.filter(v => clean(v)) : fallback;
+
     const companyContext = `
 COMPANY: ${intel.companyName || companyName}
-Industry: ${intel.industry || 'Fleet Operations'}
-Fleet Size: ${intel.fleetSize || 'enterprise'}
-HQ: ${intel.hq || 'North America'}
-Top Pain Point: ${intel.topPainPoint || 'operational efficiency'}
-Recent Event: ${intel.recentEvent || 'ongoing fleet operations'}
-Best Fit Product: ${intel.topProduct || 'ZenduONE'}
-Current Vendors: ${(intel.competitors || []).join(', ') || 'unknown'}
-LinkedIn Signals: ${(intel.linkedinSignals || []).slice(0, 3).join(' | ') || 'none found'}
-Person Signals: ${(intel.personSignals || []).slice(0, 2).join(' | ') || 'none found'}
-Industry Trends: ${(intel.industryTrends || []).slice(0, 2).join(' | ') || 'none found'}
-Hiring Signals: ${intel.hiringSignals || 'none found'}
-Funding/Expansion: ${intel.fundingOrExpansion || 'none found'}
-Displacement Angle: ${intel.displacementAngle || 'general fleet efficiency pitch'}
+Industry: ${clean(intel.industry, 'Fleet Operations')}
+Fleet Size: ${clean(intel.fleetSize, 'enterprise-scale')}
+HQ: ${clean(intel.hq, 'North America')}
+Top Pain Point: ${clean(intel.topPainPoint, 'operational efficiency and fleet visibility')}
+Recent Event: ${clean(intel.recentEvent) || clean(intel.fundingOrExpansion) || clean((intel.linkedinSignals || [])[0]) || 'active fleet operations'}
+Best Fit Product: ${clean(intel.topProduct, 'ZenduONE')}
+Current Vendors: ${cleanArr(intel.competitors).join(', ') || 'not identified — assume competitive displacement opportunity'}
+LinkedIn Signals: ${cleanArr(intel.linkedinSignals).slice(0, 3).join(' | ') || 'no direct signals — use industry triggers'}
+Person Signals: ${cleanArr(intel.personSignals).slice(0, 2).join(' | ') || 'none'}
+Industry Trends: ${cleanArr(intel.industryTrends).slice(0, 2).join(' | ') || 'rising fuel costs, ELD compliance, driver retention'}
+Hiring Signals: ${clean(intel.hiringSignals, 'none found')}
+Funding/Expansion: ${clean(intel.fundingOrExpansion, 'none found')}
+Displacement Angle: ${clean(intel.displacementAngle, 'highlight ZenduONE unified platform vs point solutions')}
 Decision Maker Hint: ${intel.decisionMakerHint || 'VP Operations or Fleet Manager'}
+
+${linkedinContext ? `\n--- LINKEDIN MCP DETAILED DATA (CRITICAL) ---\nUse the exact recent posts, job titles, and experiences listed below to craft highly specific hooks and scripts:\n${linkedinContext}\n---------------------------------------------` : ''}
     `.trim();
 
     // Executive Briefing
@@ -487,7 +555,7 @@ Return this exact JSON array (5 items, no markdown fences):
     "body": "Max 300 chars. Pattern Interrupt framework. Lead with one specific insight about their recent activity or a fleet challenge they publicly face — NOT a generic opener. No pitch. No ask. Just a relevant observation that makes them want to accept.",
     "framework": "Pattern Interrupt",
     "tip": "Personalisation tip: what the sender should verify or add before hitting send",
-    "openingSignal": "Which specific signal from the research was used to open this (e.g. 'their LinkedIn post about driver turnover')"
+    "openingSignal": "1 sentence describing the SPECIFIC real-world signal used to open this script (e.g. 'Their recent LinkedIn post about expanding their Texas fleet' or 'Their Q1 2025 press release about acquiring 50 new trucks'). Never write 'Unknown' or 'Signal used'."
   },
   {
     "type": "LinkedIn Follow-up",
@@ -495,31 +563,31 @@ Return this exact JSON array (5 items, no markdown fences):
     "body": "Sent 1-2 days after connection accepted. Under 200 words. Reference something specific from their profile or a recent post. One sentence bridge to how Zenduit solves a named pain. Soft CTA: 'Would it be worth a quick 15-min chat?'",
     "framework": "Trigger + Value",
     "tip": "Personalisation tip for sender",
-    "openingSignal": "Signal used"
+    "openingSignal": "1 sentence: the specific profile detail or post that was referenced to open this message"
   },
   {
     "type": "Cold Email #1",
-    "subject": "Curiosity hook subject line tied to their recent event or news — not generic",
+    "subject": "Curiosity hook subject line tied to their recent event or news — not generic, not 'Fleet Efficiency for [Company]'",
     "body": "AIDA framework. Attention: open with their specific news/LinkedIn signal/expansion — 1-2 sentences that prove you researched them. Interest: frame their top pain point as a cost or risk with a specific number if possible. Desire: name the specific Zenduit product/feature, cite an ROI stat, mention a similar company win. Action: one low-friction ask — '15 min to show you how [similar company] reduced [pain] by [%]?' Use \\n for paragraph breaks.",
     "framework": "AIDA",
     "tip": "Personalisation tip for sender",
-    "openingSignal": "Signal used"
+    "openingSignal": "1 sentence: the specific news/event/signal that opens the email"
   },
   {
     "type": "Cold Email #2",
-    "subject": "Re: [previous subject line]",
+    "subject": "Re: [mirror the Cold Email #1 subject]",
     "body": "Re-engage follow-up, new angle. Under 150 words. Open with a different hook — a new pain point, industry trend, or brief case study. Slightly more direct CTA. Use \\n for paragraph breaks.",
     "framework": "New Angle",
     "tip": "Personalisation tip for sender",
-    "openingSignal": "Signal used"
+    "openingSignal": "1 sentence: the new angle or industry trend used to re-open the conversation"
   },
   {
     "type": "Cold Call Script",
     "subject": null,
-    "body": "Full branching cold call script with these labeled sections:\\n\\nPERMISSION OPENER: [ask if they have 30 seconds, reference a specific trigger]\\n\\nTRIGGER HOOK: [mention the specific news/LinkedIn signal/hiring that prompted the call]\\n\\nPAIN QUESTION: [open-ended question about their top pain point — never yes/no]\\n\\nVALUE BRIDGE: [name the specific Zenduit product + one ROI stat]\\n\\nSOCIAL PROOF: [brief mention of a similar company or fleet type]\\n\\nASK: [low-friction next step]\\n\\nOBJECTION 1 — If they say 'We already have [${(intel.competitors || ['a vendor'])[0]}]':\\n[pivot: acknowledge, find the gap, re-engage]\\n\\nOBJECTION 2 — If they say 'Not the right time':\\n[pivot: plant a seed for future, get a timing commitment]",
+    "body": "Full branching cold call script with these labeled sections:\\n\\nPERMISSION OPENER: [ask if they have 30 seconds, reference a specific trigger]\\n\\nTRIGGER HOOK: [mention the specific news/LinkedIn signal/hiring that prompted the call]\\n\\nPAIN QUESTION: [open-ended question about their top pain point — never yes/no]\\n\\nVALUE BRIDGE: [name the specific Zenduit product + one ROI stat]\\n\\nSOCIAL PROOF: [brief mention of a similar company or fleet type]\\n\\nASK: [low-friction next step]\\n\\nOBJECTION 1 — If they say 'We already have [${clean((intel.competitors || [])[0], 'a competitor')}]':\\n[pivot: acknowledge, find the gap, re-engage]\\n\\nOBJECTION 2 — If they say 'Not the right time':\\n[pivot: plant a seed for future, get a timing commitment]",
     "framework": "Permission Opener",
     "tip": "Personalisation tip for sender",
-    "openingSignal": "Signal used"
+    "openingSignal": "1 sentence: the specific trigger referenced in the permission opener"
   }
 ]`.trim();
 
@@ -643,11 +711,12 @@ app.post('/api/library', (req, res) => {
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', model: 'groq/llama-3.3-70b', notebooklm: nlmReady() });
+  res.json({ status: 'ok', model: 'groq/llama-3.3-70b', notebooklm: nlmReady(), linkedin: linkedinReady() });
 });
 
 app.listen(PORT, async () => {
   console.log(`\n🚀 Zenduit Intel Backend running on http://localhost:${PORT}`);
   console.log(`   Model: Groq llama-3.3-70b-versatile + DuckDuckGo web search\n`);
   bootstrapNotebookLM().catch(err => console.warn('[NotebookLM] Bootstrap failed:', err.message));
+  bootstrapLinkedInMCP().catch(err => console.warn('[LinkedIn] Bootstrap failed:', err.message));
 });

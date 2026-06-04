@@ -145,12 +145,21 @@ export async function queryNotebook(notebookId, query) {
   });
 
   const text = result?.content?.[0]?.text;
-  if (!text) return '';
+  if (!text) {
+    console.warn(`[NotebookLM] No text in result for notebook ${notebookId}`);
+    return '';
+  }
 
   try {
     const data = JSON.parse(text);
-    return data.answer || data.summary || '';
-  } catch {
+    const ans = data.answer || data.summary || '';
+    if (!ans) console.warn(`[NotebookLM] No answer/summary in JSON for notebook ${notebookId}:`, text.slice(0, 100));
+    return ans;
+  } catch (err) {
+    if (text.includes('"status":"error"')) {
+       console.error(`[NotebookLM] Error response for notebook ${notebookId}:`, text);
+       return '';
+    }
     return text;
   }
 }

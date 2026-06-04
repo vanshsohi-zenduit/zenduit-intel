@@ -44,17 +44,24 @@ const CopyButton = ({ text, size = 'sm' }) => {
   );
 };
 
+// Treat "Unknown", "N/A", "n/a", empty, null as missing
+const val = (v) => (v && v.trim() !== '' && v.toLowerCase() !== 'unknown' && v.toLowerCase() !== 'n/a') ? v : null;
+const arrVal = (a) => Array.isArray(a) ? a.filter(v => val(v)) : [];
+
 const ContactCard = ({ intel }) => {
   if (!intel) return null;
 
-  const {
-    contactName, contactTitle, contactEmail, contactPhone,
-    contactRoleSummary, currentFleetPlatform, trackableAssets,
-    fleetSize, industry,
-  } = intel;
+  const contactName         = val(intel.contactName);
+  const contactTitle        = val(intel.contactTitle);
+  const contactEmail        = val(intel.contactEmail);
+  const contactPhone        = val(intel.contactPhone);
+  const contactRoleSummary  = val(intel.contactRoleSummary);
+  const currentFleetPlatform = val(intel.currentFleetPlatform);
+  const trackableAssets     = arrVal(intel.trackableAssets);
+  const fleetSize           = val(intel.fleetSize);
 
-  // Only render if we have at least some contact info
-  const hasContact = contactName || contactEmail || contactPhone;
+  // Only render if we have at least some real contact info
+  const hasContact = contactName || contactEmail || contactPhone || currentFleetPlatform || trackableAssets.length > 0;
   if (!hasContact) return null;
 
   return (
@@ -70,7 +77,7 @@ const ContactCard = ({ intel }) => {
           <User className="w-4 h-4" style={{ color: '#60A5FA' }} />
         </div>
         <div>
-          <p className="text-[13px] font-bold text-white">{contactName || 'Contact Details'}</p>
+          <p className="text-[13px] font-bold text-white">{contactName || 'Decision Maker'}</p>
           {contactTitle && <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.40)' }}>{contactTitle}</p>}
         </div>
       </div>
@@ -206,7 +213,7 @@ const ScriptCard = ({ script, index }) => {
             <div style={{ padding: '0 24px 20px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
 
               {/* Research signal used */}
-              {script.openingSignal && (
+              {script.openingSignal && !['unknown', 'signal used', 'n/a', 'none'].includes(script.openingSignal.toLowerCase().trim()) && (
                 <div className="flex items-start gap-2 mt-4 mb-3 px-3 py-2.5 rounded-lg"
                   style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.12)' }}>
                   <Search className="w-3 h-3 mt-0.5 shrink-0" style={{ color: 'rgba(16,185,129,0.6)' }} />

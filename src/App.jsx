@@ -18,7 +18,8 @@ import {
 const ResearchLoader = ({ phases, activeTool }) => {
   const phaseLabels = [
     { id: 1, label: 'Product Intelligence',  desc: 'NotebookLM · Zenduit features · ROI data' },
-    { id: 2, label: 'Prospect Research',     desc: 'Website · LinkedIn · News · Hiring signals' },
+    { id: 1.5, label: 'LinkedIn Intelligence', desc: 'LinkedIn MCP · Structured Profile & Posts' },
+    { id: 2, label: 'Prospect Research',     desc: 'Website · Search · News · Hiring signals' },
     { id: 3, label: 'Strategy Generation',   desc: 'Briefing · Objections · Sequence · Scripts' },
   ];
 
