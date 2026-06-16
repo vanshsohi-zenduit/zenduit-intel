@@ -1,6 +1,5 @@
-/**
- * Utility functions for Zenduit Outbound Intelligence Tool
- */
+import Papa from 'papaparse';
+
 
 export const extractDomain = (url) => {
   try {
@@ -12,12 +11,13 @@ export const extractDomain = (url) => {
 };
 
 export const parseCSV = (text) => {
-  const lines = text.trim().split('\n');
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/\s+/g, '_'));
-  return lines.slice(1).map(line => {
-    const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-    return Object.fromEntries(headers.map((h, i) => [h, values[i] || '']));
+  const { data } = Papa.parse(text, { header: true, skipEmptyLines: true });
+  return data.map(row => {
+    const norm = {};
+    for (const [k, v] of Object.entries(row)) {
+      norm[k.trim().toLowerCase().replace(/\s+/g, '_')] = v;
+    }
+    return norm;
   });
 };
 

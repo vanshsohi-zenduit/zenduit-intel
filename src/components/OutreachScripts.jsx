@@ -1,151 +1,112 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, Check, Mail, Phone, MessageCircle, ChevronDown, Zap, Search, User, Briefcase, Truck, Tag } from 'lucide-react';
+import { Copy, Check, Mail, Phone, MessageCircle, ChevronDown, Zap, Search, User, Briefcase, Truck, Send, X, FlaskConical } from 'lucide-react';
 import LinkedInIcon from './LinkedInIcon.jsx';
+import { saveOutcome } from '../lib/mcpClient.js';
 
-const TYPES = {
-  'LinkedIn Connection': { icon: LinkedInIcon,  color: '#60A5FA', bg: 'rgba(96,165,250,0.1)',   border: 'rgba(96,165,250,0.2)'   },
-  'LinkedIn Follow-up':  { icon: LinkedInIcon,  color: '#818CF8', bg: 'rgba(129,140,248,0.1)',  border: 'rgba(129,140,248,0.2)'  },
-  'Cold Email #1':       { icon: Mail,          color: '#10B981', bg: 'rgba(16,185,129,0.1)',   border: 'rgba(16,185,129,0.2)'   },
-  'Cold Email #2':       { icon: Mail,          color: '#34D399', bg: 'rgba(52,211,153,0.08)',  border: 'rgba(52,211,153,0.18)'  },
-  'Cold Email':          { icon: Mail,          color: '#10B981', bg: 'rgba(16,185,129,0.1)',   border: 'rgba(16,185,129,0.2)'   },
-  'Cold Call Script':    { icon: Phone,         color: '#FBBF24', bg: 'rgba(251,191,36,0.1)',   border: 'rgba(251,191,36,0.2)'   },
-  'Message':             { icon: MessageCircle, color: '#A78BFA', bg: 'rgba(167,139,250,0.1)',  border: 'rgba(167,139,250,0.2)'  },
+const TYPE_ICON = {
+  'LinkedIn Connection': LinkedInIcon,
+  'LinkedIn Follow-up':  LinkedInIcon,
+  'Cold Email #1':       Mail,
+  'Cold Email #2':       Mail,
+  'Cold Email':          Mail,
+  'Cold Call Script':    Phone,
+  'Message':             MessageCircle,
 };
 
-const FRAMEWORK_COLORS = {
-  'AIDA':                { color: '#10B981', bg: 'rgba(16,185,129,0.10)',  border: 'rgba(16,185,129,0.20)'  },
-  'Pattern Interrupt':   { color: '#60A5FA', bg: 'rgba(96,165,250,0.10)',  border: 'rgba(96,165,250,0.20)'  },
-  'Trigger + Value':     { color: '#818CF8', bg: 'rgba(129,140,248,0.10)', border: 'rgba(129,140,248,0.20)' },
-  'Permission Opener':   { color: '#FBBF24', bg: 'rgba(251,191,36,0.10)',  border: 'rgba(251,191,36,0.20)'  },
-  'New Angle':           { color: '#34D399', bg: 'rgba(52,211,153,0.10)',  border: 'rgba(52,211,153,0.18)'  },
-};
+const val    = v => (v && v.trim() !== '' && v.toLowerCase() !== 'unknown' && v.toLowerCase() !== 'n/a') ? v : null;
+const arrVal = a => Array.isArray(a) ? a.filter(v => val(v)) : [];
 
-const CopyButton = ({ text, size = 'sm' }) => {
+const CopyBtn = ({ text, size = 'sm' }) => {
   const [copied, setCopied] = useState(false);
-  const copy = (e) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const copy = e => { e.stopPropagation(); navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); };
+  const sz = size === 'sm' ? '22px' : '28px';
   return (
-    <button onClick={copy}
-      className="flex items-center justify-center shrink-0 transition-all rounded-md"
-      style={{
-        width: size === 'sm' ? '22px' : '28px',
-        height: size === 'sm' ? '22px' : '28px',
-        ...(copied
-          ? { background: 'rgba(16,185,129,0.15)', color: '#10B981', border: '1px solid rgba(16,185,129,0.25)' }
-          : { background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.30)', border: '1px solid rgba(255,255,255,0.08)' })
-      }}>
+    <button onClick={copy} className="flex items-center justify-center rounded shrink-0"
+      style={{ width: sz, height: sz, background: copied ? 'rgba(16,185,129,0.10)' : 'rgba(0,0,0,0.04)', border: `1px solid ${copied ? 'rgba(16,185,129,0.22)' : '#e2e8f0'}`, color: copied ? '#10B981' : '#64748b' }}>
       {copied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
     </button>
   );
 };
 
-// Treat "Unknown", "N/A", "n/a", empty, null as missing
-const val = (v) => (v && v.trim() !== '' && v.toLowerCase() !== 'unknown' && v.toLowerCase() !== 'n/a') ? v : null;
-const arrVal = (a) => Array.isArray(a) ? a.filter(v => val(v)) : [];
-
-const ContactCard = ({ intel }) => {
+export const ContactCard = ({ intel }) => {
   if (!intel) return null;
-
-  const contactName         = val(intel.contactName);
-  const contactTitle        = val(intel.contactTitle);
-  const contactEmail        = val(intel.contactEmail);
-  const contactPhone        = val(intel.contactPhone);
-  const contactRoleSummary  = val(intel.contactRoleSummary);
-  const currentFleetPlatform = val(intel.currentFleetPlatform);
-  const trackableAssets     = arrVal(intel.trackableAssets);
-  const fleetSize           = val(intel.fleetSize);
-
-  // Only render if we have at least some real contact info
-  const hasContact = contactName || contactEmail || contactPhone || currentFleetPlatform || trackableAssets.length > 0;
-  if (!hasContact) return null;
+  const name     = val(intel.contactName);
+  const title    = val(intel.contactTitle);
+  const email    = val(intel.contactEmail);
+  const phone    = val(intel.contactPhone);
+  const roleSub  = val(intel.contactRoleSummary);
+  const platform = val(intel.currentFleetPlatform);
+  const assets   = arrVal(intel.trackableAssets);
+  const fleet    = val(intel.fleetSize);
+  if (!name && !email && !phone && !platform && !assets.length) return null;
 
   return (
-    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-      className="mb-5 rounded-2xl overflow-hidden"
-      style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.08)' }}>
-
-      {/* Card header */}
-      <div className="flex items-center gap-3 px-5 py-4"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
-        <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-          style={{ background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.20)' }}>
-          <User className="w-4 h-4" style={{ color: '#60A5FA' }} />
+    <div className="card mb-5 overflow-hidden">
+      <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid #e2e8f0', background: 'rgba(0,0,0,0.01)' }}>
+        <div className="flex items-center justify-center rounded-lg shrink-0"
+          style={{ width: '32px', height: '32px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.18)' }}>
+          <User className="w-4 h-4" style={{ color: '#2563eb' }} />
         </div>
         <div>
-          <p className="text-[13px] font-bold text-white">{contactName || 'Decision Maker'}</p>
-          {contactTitle && <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.40)' }}>{contactTitle}</p>}
+          <p className="text-[13px] font-semibold" style={{ color: '#0f172a' }}>{name || 'Decision Maker'}</p>
+          {title && <p className="text-[12px]" style={{ color: '#64748b' }}>{title}</p>}
         </div>
       </div>
-
-      {/* Card body */}
       <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-        {/* Contact info column */}
         <div className="flex flex-col gap-3">
-          {contactEmail && (
+          {email && (
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'rgba(255,255,255,0.25)' }}>Email</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#64748b' }}>Email</p>
               <div className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 shrink-0" style={{ color: 'rgba(16,185,129,0.7)' }} />
-                <p className="text-[12px] font-medium truncate" style={{ color: 'rgba(255,255,255,0.70)' }}>{contactEmail}</p>
-                <CopyButton text={contactEmail} />
+                <Mail className="w-3.5 h-3.5 shrink-0" style={{ color: '#2563eb' }} />
+                <p className="text-[12px] truncate" style={{ color: '#374151' }}>{email}</p>
+                <CopyBtn text={email} />
               </div>
             </div>
           )}
-
-          {contactPhone && (
+          {phone && (
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'rgba(255,255,255,0.25)' }}>Phone</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#64748b' }}>Phone</p>
               <div className="flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 shrink-0" style={{ color: 'rgba(251,191,36,0.7)' }} />
-                <p className="text-[12px] font-medium" style={{ color: 'rgba(255,255,255,0.70)' }}>{contactPhone}</p>
-                <CopyButton text={contactPhone} />
+                <Phone className="w-3.5 h-3.5 shrink-0" style={{ color: '#d97706' }} />
+                <p className="text-[12px]" style={{ color: '#374151' }}>{phone}</p>
+                <CopyBtn text={phone} />
               </div>
             </div>
           )}
-
-          {currentFleetPlatform && (
+          {platform && (
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'rgba(255,255,255,0.25)' }}>Current Fleet Platform</p>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
-                style={{ background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.18)' }}>
-                <Briefcase className="w-3 h-3" style={{ color: 'rgba(167,139,250,0.7)' }} />
-                <span className="text-[11px] font-semibold" style={{ color: 'rgba(167,139,250,0.9)' }}>{currentFleetPlatform}</span>
-              </div>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#64748b' }}>Current Platform</p>
+              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px]"
+                style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#374151' }}>
+                <Briefcase className="w-3 h-3" />
+                {platform}
+              </span>
             </div>
           )}
-
-          {fleetSize && (
+          {fleet && (
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: 'rgba(255,255,255,0.25)' }}>Est. Fleet Size</p>
-              <p className="text-[12px] font-semibold" style={{ color: 'rgba(255,255,255,0.60)' }}>{fleetSize}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#64748b' }}>Fleet Size</p>
+              <p className="text-[12px]" style={{ color: '#374151' }}>{fleet}</p>
             </div>
           )}
         </div>
-
-        {/* Role + assets column */}
         <div className="flex flex-col gap-3">
-          {contactRoleSummary && (
+          {roleSub && (
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'rgba(255,255,255,0.25)' }}>Role Snapshot</p>
-              <p className="text-[12px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.50)' }}>{contactRoleSummary}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#64748b' }}>Role Snapshot</p>
+              <p className="text-[12px] leading-relaxed" style={{ color: '#374151' }}>{roleSub}</p>
             </div>
           )}
-
-          {trackableAssets?.length > 0 && (
+          {assets.length > 0 && (
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'rgba(255,255,255,0.25)' }}>Trackable Assets</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-2" style={{ color: '#64748b' }}>Trackable Assets</p>
               <div className="flex flex-wrap gap-1.5">
-                {trackableAssets.map((asset, i) => (
-                  <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold"
-                    style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)', color: 'rgba(16,185,129,0.80)' }}>
-                    <Truck className="w-2.5 h-2.5" />
-                    {asset}
+                {assets.map((a, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px]"
+                    style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)', color: '#059669' }}>
+                    <Truck className="w-2.5 h-2.5" />{a}
                   </span>
                 ))}
               </div>
@@ -153,16 +114,65 @@ const ContactCard = ({ intel }) => {
           )}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 };
 
-const ScriptCard = ({ script, index }) => {
+const SendLinkedInBtn = ({ profileUrl, message }) => {
+  const [status, setStatus] = useState('idle');
+
+  if (!profileUrl) return (
+    <button disabled title="No LinkedIn profile URL found for this contact"
+      className="flex items-center gap-1.5 rounded-lg"
+      style={{ height: '36px', padding: '0 14px', fontSize: '12px', opacity: 0.35, cursor: 'not-allowed',
+               background: 'rgba(10,102,194,0.06)', color: '#0A66C2', border: '1px solid rgba(10,102,194,0.16)' }}>
+      <LinkedInIcon className="w-3.5 h-3.5" /> Send
+    </button>
+  );
+
+  const send = async (e) => {
+    e.stopPropagation();
+    setStatus('sending');
+    try {
+      const res = await fetch('/api/linkedin/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileUrl, message }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setStatus('sent');
+      setTimeout(() => setStatus('idle'), 3000);
+    } catch {
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 3000);
+    }
+  };
+
+  const styles = {
+    idle:    { background: 'rgba(10,102,194,0.08)',  color: '#0A66C2', border: '1px solid rgba(10,102,194,0.20)' },
+    sending: { background: 'rgba(10,102,194,0.08)',  color: '#0A66C2', border: '1px solid rgba(10,102,194,0.20)', opacity: 0.7 },
+    sent:    { background: 'rgba(16,185,129,0.10)',  color: '#059669', border: '1px solid rgba(16,185,129,0.22)' },
+    error:   { background: 'rgba(220,38,38,0.08)',   color: '#dc2626', border: '1px solid rgba(220,38,38,0.20)' },
+  };
+
+  return (
+    <button onClick={send} disabled={status === 'sending'}
+      className="flex items-center gap-1.5 rounded-lg transition-colors"
+      style={{ height: '36px', padding: '0 14px', fontSize: '12px', ...styles[status] }}>
+      {status === 'idle'    && <><LinkedInIcon className="w-3.5 h-3.5" /> Send</>}
+      {status === 'sending' && <><Send className="w-3.5 h-3.5 animate-pulse" /> Sending…</>}
+      {status === 'sent'    && <><Check className="w-3.5 h-3.5" /> Sent!</>}
+      {status === 'error'   && <><X className="w-3.5 h-3.5" /> Failed</>}
+    </button>
+  );
+};
+
+const isLinkedInScript = type => type?.startsWith('LinkedIn');
+
+const ScriptCard = ({ script, index, linkedInContactUrl }) => {
   const [copied, setCopied] = useState(false);
   const [open,   setOpen]   = useState(index === 0);
-  const cfg  = TYPES[script.type] || TYPES.Message;
-  const Icon = cfg.icon;
-  const fw   = script.framework ? (FRAMEWORK_COLORS[script.framework] || FRAMEWORK_COLORS['New Angle']) : null;
+  const Icon = TYPE_ICON[script.type] || MessageCircle;
 
   const copy = () => {
     navigator.clipboard.writeText(script.subject ? `Subject: ${script.subject}\n\n${script.body}` : script.body);
@@ -171,146 +181,203 @@ const ScriptCard = ({ script, index }) => {
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.07 }}
-      className="overflow-hidden"
-      style={{
-        borderRadius: '16px',
-        background: 'rgba(255,255,255,0.025)',
-        border: `1px solid ${open ? cfg.border : 'rgba(255,255,255,0.07)'}`,
-        transition: 'border-color 0.2s',
-      }}>
-
-      {/* Header row */}
-      <button onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-3 text-left"
-        style={{ padding: '16px 20px' }}>
-        <div className="flex items-center justify-center shrink-0"
-          style={{ width: '36px', height: '36px', borderRadius: '50%', background: cfg.bg, border: `1px solid ${cfg.border}`, color: cfg.color }}>
-          <Icon className="w-3.5 h-3.5" />
+    <div className="card overflow-hidden">
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-3 text-left px-5 py-4">
+        <div className="flex items-center justify-center rounded-lg shrink-0"
+          style={{ width: '36px', height: '36px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.16)' }}>
+          <Icon className="w-4 h-4" style={{ color: '#2563eb' }} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-[13px] font-semibold" style={{ color: '#F0F0F5' }}>{script.type}</p>
-            {fw && script.framework && (
-              <span className="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full"
-                style={{ background: fw.bg, color: fw.color, border: `1px solid ${fw.border}` }}>
+            <p className="text-[13px] font-medium" style={{ color: '#0f172a' }}>{script.type}</p>
+            {script.framework && (
+              <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                style={{ background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0' }}>
                 {script.framework}
               </span>
             )}
           </div>
-          {script.subject && <p className="text-[11px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{script.subject}</p>}
+          {script.subject && <p className="text-[11px] truncate mt-0.5" style={{ color: '#64748b' }}>{script.subject}</p>}
         </div>
-        <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }}>
-          <ChevronDown className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.25)' }} />
+        <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.18 }}>
+          <ChevronDown className="w-4 h-4" style={{ color: '#94a3b8' }} />
         </motion.div>
       </button>
 
-      {/* Body */}
       <AnimatePresence initial={false}>
         {open && (
           <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }}
-            transition={{ duration: 0.22, ease: 'easeInOut' }} className="overflow-hidden">
-            <div style={{ padding: '0 24px 20px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-
-              {/* Research signal used */}
+            transition={{ duration: 0.2, ease: 'easeInOut' }} className="overflow-hidden">
+            <div style={{ padding: '0 24px 24px', borderTop: '1px solid #e2e8f0' }}>
               {script.openingSignal && !['unknown', 'signal used', 'n/a', 'none'].includes(script.openingSignal.toLowerCase().trim()) && (
                 <div className="flex items-start gap-2 mt-4 mb-3 px-3 py-2.5 rounded-lg"
-                  style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.12)' }}>
-                  <Search className="w-3 h-3 mt-0.5 shrink-0" style={{ color: 'rgba(16,185,129,0.6)' }} />
-                  <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.40)' }}>
-                    <span className="font-semibold" style={{ color: 'rgba(16,185,129,0.7)' }}>Signal used: </span>
-                    {script.openingSignal}
+                  style={{ background: 'rgba(37,99,235,0.04)', border: '1px solid rgba(37,99,235,0.12)' }}>
+                  <Search className="w-3 h-3 mt-0.5 shrink-0" style={{ color: '#2563eb' }} />
+                  <p className="text-[12px] leading-relaxed" style={{ color: '#374151' }}>
+                    <span className="font-medium" style={{ color: '#2563eb' }}>Signal: </span>{script.openingSignal}
                   </p>
                 </div>
               )}
-
               {script.subject && (
-                <div className="mb-3 mt-4 px-3 py-2 rounded-lg text-[12px]"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                  <span className="font-semibold" style={{ color: 'rgba(255,255,255,0.35)' }}>Subject: </span>
-                  <span style={{ color: 'rgba(255,255,255,0.70)' }}>{script.subject}</span>
+                <div className="mb-3 mt-4 px-3 py-2 rounded-lg"
+                  style={{ background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '13px' }}>
+                  <span className="font-medium" style={{ color: '#64748b' }}>Subject: </span>
+                  <span style={{ color: '#374151' }}>{script.subject}</span>
                 </div>
               )}
-
               {!script.openingSignal && !script.subject && <div className="mt-4" />}
 
-              <p className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color: 'rgba(255,255,255,0.60)' }}>{script.body}</p>
+              <p className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color: '#374151' }}>{script.body}</p>
 
-              {/* Sender tip */}
               {script.tip && (
                 <div className="flex items-start gap-2 mt-4 px-3 py-2.5 rounded-lg"
-                  style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.15)' }}>
-                  <Zap className="w-3 h-3 mt-0.5 shrink-0" style={{ color: 'rgba(251,191,36,0.7)' }} />
-                  <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.40)' }}>
-                    <span className="font-semibold" style={{ color: 'rgba(251,191,36,0.8)' }}>Before sending: </span>
-                    {script.tip}
+                  style={{ background: 'rgba(217,119,6,0.05)', border: '1px solid rgba(217,119,6,0.14)' }}>
+                  <Zap className="w-3 h-3 mt-0.5 shrink-0" style={{ color: '#d97706' }} />
+                  <p className="text-[12px] leading-relaxed" style={{ color: '#374151' }}>
+                    <span className="font-medium" style={{ color: '#d97706' }}>Before sending: </span>{script.tip}
                   </p>
                 </div>
               )}
 
-              <div className="mt-4 flex justify-end">
-                <button onClick={copy}
-                  className="flex items-center gap-1.5 font-bold uppercase tracking-wider transition-all"
+              <div className="mt-4 flex items-center justify-end gap-2">
+                {isLinkedInScript(script.type) && (
+                  <SendLinkedInBtn profileUrl={linkedInContactUrl} message={script.body} />
+                )}
+                <button onClick={copy} className="flex items-center gap-1.5 rounded-lg transition-colors"
                   style={{
-                    height: '36px',
-                    padding: '0 14px',
-                    borderRadius: '10px',
-                    fontSize: '11px',
+                    height: '36px', padding: '0 14px', fontSize: '12px',
                     ...(copied
-                      ? { background: 'rgba(16,185,129,0.15)', color: '#10B981', border: '1px solid rgba(16,185,129,0.25)' }
-                      : { background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.45)', border: '1px solid rgba(255,255,255,0.09)' })
+                      ? { background: 'rgba(16,185,129,0.10)', color: '#059669', border: '1px solid rgba(16,185,129,0.22)' }
+                      : { background: 'rgba(0,0,0,0.04)', color: '#64748b', border: '1px solid #e2e8f0' }),
                   }}>
-                  {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                  {copied ? 'Copied!' : 'Copy'}
+                  {copied ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
                 </button>
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 };
 
-const OutreachScripts = ({ scripts, companyName, intel }) => {
-  if (!scripts?.length) return (
-    <div className="flex items-center justify-center h-96">
-      <div className="text-center">
-        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
-          style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)' }}>
-          <Mail className="w-6 h-6 text-emerald-400/50" />
+const VARIANT_COLORS = {
+  A: { bg: 'rgba(37,99,235,0.08)',  bd: 'rgba(37,99,235,0.20)',  fg: '#2563eb' },
+  B: { bg: 'rgba(16,185,129,0.08)', bd: 'rgba(16,185,129,0.20)', fg: '#059669' },
+  C: { bg: 'rgba(217,119,6,0.08)',  bd: 'rgba(217,119,6,0.20)',  fg: '#d97706' },
+};
+
+const VariantCard = ({ variant, companyName }) => {
+  const [copied, setCopied] = useState(false);
+  const [logState, setLogState] = useState('idle'); // idle | logging | logged | error
+  const c = VARIANT_COLORS[variant.variant] || VARIANT_COLORS.A;
+
+  const copy = () => {
+    navigator.clipboard.writeText(variant.subject ? `Subject: ${variant.subject}\n\n${variant.body}` : variant.body);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  };
+
+  const logSent = async () => {
+    if (!companyName) return;
+    setLogState('logging');
+    try {
+      await saveOutcome({ company: companyName, channel: 'Email', variant: variant.variant, status: 'SENT' });
+      setLogState('logged'); setTimeout(() => setLogState('idle'), 3000);
+    } catch {
+      setLogState('error'); setTimeout(() => setLogState('idle'), 3000);
+    }
+  };
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="flex items-center gap-3 px-5 py-3.5" style={{ borderBottom: '1px solid #e2e8f0' }}>
+        <div className="flex items-center justify-center rounded-lg shrink-0 text-[13px] font-bold"
+          style={{ width: '30px', height: '30px', background: c.bg, border: `1px solid ${c.bd}`, color: c.fg }}>
+          {variant.variant}
         </div>
-        <p className="text-[15px] font-bold mb-1" style={{ color: '#F0F0F5' }}>No scripts yet</p>
-        <p className="text-[13px]" style={{ color: 'rgba(255,255,255,0.40)' }}>Research a prospect first to generate personalized outreach scripts.</p>
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] font-medium truncate" style={{ color: '#0f172a' }}>{variant.subject || 'Opener'}</p>
+          {variant.angle && <p className="text-[11px] truncate" style={{ color: '#64748b' }}>{variant.angle}</p>}
+        </div>
+        <CopyBtn text={variant.subject ? `Subject: ${variant.subject}\n\n${variant.body}` : variant.body} />
+      </div>
+      <div className="px-5 py-4">
+        <p className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color: '#374151' }}>{variant.body}</p>
+        <div className="mt-4 flex items-center justify-end">
+          <button onClick={logSent} disabled={!companyName || logState === 'logging'}
+            className="flex items-center gap-1.5 rounded-lg transition-colors"
+            title={companyName ? `Log variant ${variant.variant} as sent to ${companyName}` : 'Research a prospect first'}
+            style={{
+              height: '32px', padding: '0 12px', fontSize: '11.5px', fontWeight: 500,
+              cursor: companyName ? 'pointer' : 'not-allowed',
+              ...(logState === 'logged'
+                ? { background: 'rgba(16,185,129,0.10)', color: '#059669', border: '1px solid rgba(16,185,129,0.22)' }
+                : logState === 'error'
+                ? { background: 'rgba(220,38,38,0.08)', color: '#dc2626', border: '1px solid rgba(220,38,38,0.20)' }
+                : { background: c.bg, color: c.fg, border: `1px solid ${c.bd}`, opacity: companyName ? 1 : 0.4 }),
+            }}>
+            {logState === 'logged' ? <><Check className="w-3.5 h-3.5" /> Logged</>
+              : logState === 'error' ? <><X className="w-3.5 h-3.5" /> Failed</>
+              : logState === 'logging' ? <><Send className="w-3.5 h-3.5 animate-pulse" /> Logging…</>
+              : <><Send className="w-3.5 h-3.5" /> Log as sent</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const VariantsSection = ({ variants, companyName }) => {
+  if (!variants?.length) return null;
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <FlaskConical className="w-4 h-4" style={{ color: '#2563eb' }} />
+        <h2 className="text-[14px] font-semibold" style={{ color: '#0f172a' }}>A/B Opener Variants</h2>
+        <span className="text-[11px]" style={{ color: '#64748b' }}>· rotate &amp; track which converts</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {variants.map((v, i) => <VariantCard key={i} variant={v} companyName={companyName} />)}
+      </div>
+    </div>
+  );
+};
+
+const OutreachScripts = ({ scripts, variants, companyName, intel, linkedInContactUrl }) => {
+  if (!scripts?.length && !variants?.length) return (
+    <div className="flex items-center justify-center h-80">
+      <div className="text-center">
+        <div className="flex items-center justify-center rounded-xl mx-auto mb-4"
+          style={{ width: '48px', height: '48px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.16)' }}>
+          <Mail className="w-5 h-5" style={{ color: '#2563eb' }} />
+        </div>
+        <p className="text-[15px] font-semibold mb-1" style={{ color: '#0f172a' }}>No scripts yet</p>
+        <p className="text-[13px]" style={{ color: '#64748b' }}>Research a prospect first to generate personalized outreach scripts.</p>
       </div>
     </div>
   );
 
   return (
     <div className="w-full max-w-3xl">
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold" style={{ color: '#F0F0F5' }}>Outreach Scripts</h1>
-          <p className="text-[13px] mt-0.5" style={{ color: 'rgba(255,255,255,0.40)' }}>
-            Personalized for <span className="text-emerald-400 font-semibold">{companyName}</span>
+          <h1 className="text-xl font-bold" style={{ color: '#0f172a' }}>Outreach Scripts</h1>
+          <p className="text-[13px] mt-1" style={{ color: '#64748b' }}>
+            Personalized for <span className="font-medium" style={{ color: '#2563eb' }}>{companyName}</span>
           </p>
         </div>
-        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest px-2.5 py-1 rounded-full"
-          style={{ background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.20)' }}>
-          {scripts.length} Scripts
+        <span className="text-[11px] font-medium px-2.5 py-1 rounded-full"
+          style={{ background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.18)', color: '#2563eb' }}>
+          {scripts?.length || 0} scripts
         </span>
       </div>
-
-      {/* Contact card */}
       <ContactCard intel={intel} />
-
-      <div className="flex flex-col gap-2.5">
-        {scripts.map((s, i) => <ScriptCard key={i} script={s} index={i} />)}
+      <VariantsSection variants={variants} companyName={companyName} />
+      <div className="flex flex-col gap-2">
+        {(scripts || []).map((s, i) => <ScriptCard key={i} script={s} index={i} linkedInContactUrl={linkedInContactUrl} />)}
       </div>
-
-      <p className="mt-4 text-[11px] leading-relaxed px-1" style={{ color: 'rgba(255,255,255,0.25)' }}>
-        Scripts are grounded in real-time LinkedIn signals, company news, and Zenduit product intelligence. Review and personalise before sending.
+      <p className="mt-5 text-[12px] leading-relaxed" style={{ color: '#64748b' }}>
+        Scripts are grounded in real-time web signals and Zenduit product intelligence. Review before sending.
       </p>
     </div>
   );

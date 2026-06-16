@@ -1,40 +1,54 @@
+import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import Header from './Header';
-import { motion, AnimatePresence } from 'framer-motion';
+import Sidebar from './Sidebar';
 
-const Layout = ({ children, activeTab, onTabChange, activeIntel, resultsAvailable, libraryCount }) => (
-  <div className="min-h-screen" style={{ background: '#07070C' }}>
-    {/* Ambient background glows */}
-    <div className="fixed inset-0 pointer-events-none overflow-hidden">
-      <div className="absolute top-0 left-1/3 w-[700px] h-[500px] rounded-full opacity-25"
-        style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.08) 0%, transparent 70%)', filter: 'blur(60px)' }} />
-      <div className="absolute bottom-0 right-0 w-[500px] h-[400px] rounded-full opacity-15"
-        style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.06) 0%, transparent 70%)', filter: 'blur(80px)' }} />
-    </div>
+const Layout = ({ children, activeTab, onTabChange, activeIntel, resultsAvailable, libraryCount }) => {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-    <Header
-      activeTab={activeTab}
-      onTabChange={onTabChange}
-      activeIntel={activeIntel}
-      resultsAvailable={resultsAvailable}
-      libraryCount={libraryCount}
-    />
+  return (
+    <div className="flex flex-col min-h-screen" style={{ background: '#f0f4f8' }}>
+      <Header
+        activeIntel={activeIntel}
+        onMenuToggle={() => setSidebarOpen(o => !o)}
+        sidebarOpen={sidebarOpen}
+      />
 
-    <main className="relative overflow-y-auto" style={{ height: 'calc(100vh - 56px)' }}>
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-8 lg:px-12 py-5 sm:py-8 h-full">
-        <AnimatePresence mode="wait">
-          <motion.div key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="h-full"
-          >
-            {children}
-          </motion.div>
-        </AnimatePresence>
+      <div className="flex flex-1 overflow-hidden" style={{ height: 'calc(100vh - 56px)' }}>
+        <Sidebar
+          activeTab={activeTab}
+          onTabChange={(tab) => { onTabChange(tab); setSidebarOpen(false); }}
+          resultsAvailable={resultsAvailable}
+          libraryCount={libraryCount}
+          open={sidebarOpen}
+        />
+
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 z-20 lg:hidden"
+            style={{ background: 'rgba(15,23,42,0.5)' }}
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        <main className="flex-1 overflow-y-auto min-w-0" style={{ background: '#f0f4f8' }}>
+          <div className="max-w-[1400px] mx-auto px-6 sm:px-8 py-8">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15, ease: 'easeOut' }}
+              >
+                {children}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </main>
       </div>
-    </main>
-  </div>
-);
+    </div>
+  );
+};
 
 export default Layout;

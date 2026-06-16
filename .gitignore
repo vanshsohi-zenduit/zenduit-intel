@@ -29,3 +29,8 @@ dist-ssr
 
 # Runtime data
 library.json
+outcomes.json
+credentials.json
+sync_state.json
+
+CLAUDE.md

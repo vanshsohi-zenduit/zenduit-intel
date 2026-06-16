@@ -5,24 +5,22 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "node server.js",
+    "server": "uvicorn app.main:app --port 3001 --reload",
+    "coach": "cd coach-server && node server.js",
+    "coach:dev": "cd coach-server && nodemon server.js",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
-    "@google/generative-ai": "^0.24.1",
     "@tailwindcss/vite": "^4.2.1",
-    "cors": "^2.8.6",
-    "dotenv": "^17.3.1",
-    "express": "^5.2.1",
+    "dompurify": "^3.2.6",
     "framer-motion": "^12.35.1",
-    "groq-sdk": "^0.37.0",
     "lucide-react": "^0.577.0",
     "papaparse": "^5.5.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-router-dom": "^7.17.0",
     "tailwindcss": "^4.2.1"
   },
   "devDependencies": {
