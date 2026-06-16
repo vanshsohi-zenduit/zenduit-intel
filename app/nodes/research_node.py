@@ -199,6 +199,11 @@ Always fetch the actual company website and its key sub-pages.
 Never output "Unknown" when you can make a reasonable inference or guess.
 After all research, return ONLY a valid JSON object — no markdown, no explanation, just the JSON."""
 
+RESEARCH_SYSTEM_GROUNDED = """You are an elite B2B sales intelligence analyst for Zenduit, a fleet telematics company.
+Use Google Search aggressively to build deep company and operations intelligence.
+Never output "Unknown" when you can make a reasonable inference or guess.
+After all research, return ONLY a valid JSON object — no markdown, no explanation, just the JSON."""
+
 
 def _build_research_prompt(state: IntelState) -> str:
     company_name = state.get("company_name") or "unknown"
@@ -585,6 +590,125 @@ async def _ddg_research_loop(state: IntelState, config: RunnableConfig) -> dict:
     return {"website_intel": intel, "errors": []}
 
 
+# ── Google Search Grounding (primary cloud path) ──────────────────────────────
+
+async def _grounded_research(state: IntelState, config: RunnableConfig) -> dict:
+    """Research via Google Search Grounding — works reliably from cloud servers."""
+    import asyncio as _asyncio
+    import google.genai as genai
+    from google.genai import types as genai_types
+
+    await adispatch_custom_event(
+        "phase",
+        {"phase": 1, "label": "Website Research", "status": "start"},
+        config=config,
+    )
+
+    api_key = get_config("GOOGLE_API_KEY")
+    client = genai.Client(api_key=api_key)
+
+    grounding_tool = genai_types.Tool(google_search=genai_types.GoogleSearch())
+    gen_config = genai_types.GenerateContentConfig(
+        tools=[grounding_tool],
+        temperature=0.1,
+    )
+
+    prompt = RESEARCH_SYSTEM_GROUNDED + "\n\n" + _build_research_prompt(state)
+
+    loop = _asyncio.get_event_loop()
+    response = await loop.run_in_executor(
+        None,
+        lambda: client.models.generate_content(
+            model=RESEARCH_MODEL,
+            contents=prompt,
+            config=gen_config,
+        ),
+    )
+
+    # Extract grounding metadata for sources and search queries
+    searches: list[str] = []
+    sources: list[str] = []
+    try:
+        gm = response.candidates[0].grounding_metadata
+        if gm:
+            searches = list(gm.web_search_queries or [])
+            sources = [
+                c.web.uri for c in (gm.grounding_chunks or [])
+                if c.web and c.web.uri
+            ]
+    except (AttributeError, IndexError):
+        pass
+
+    # Emit search events so the execution log shows what was searched
+    for query in searches:
+        await adispatch_custom_event(
+            "tool", {"name": "web_search", "input": {"query": query}}, config=config
+        )
+        await adispatch_custom_event(
+            "tool_result",
+            {"name": "web_search", "kind": "search", "query": query, "count": 0, "items": []},
+            config=config,
+        )
+
+    raw = response.text or ""
+
+    intel: dict = {}
+    try:
+        match = re.search(r"\{[\s\S]*\}", raw)
+        if match:
+            intel = json.loads(match.group())
+    except (json.JSONDecodeError, AttributeError):
+        pass
+
+    if not intel:
+        intel = {
+            "companyName": state.get("company_name") or "Unknown",
+            "summary": raw[:500] if raw.strip() else "Research data unavailable",
+        }
+    elif not intel.get("companyName"):
+        intel["companyName"] = state.get("company_name") or "Unknown"
+
+    intel = _blank_vague_hq(intel)
+    seed = state.get("seed_intel") or {}
+    if seed:
+        intel = _merge_intel(seed, intel)
+
+    log.info("Grounded research: companyName=%s searches=%d sources=%d",
+             intel.get("companyName"), len(searches), len(sources))
+
+    seed_fields = {k for k in seed if not _is_empty(seed.get(k))} if seed else set()
+    field_provenance = []
+    for k, v in intel.items():
+        if _is_empty(v):
+            continue
+        src = (
+            "sheet" if (k in seed_fields and k in _CSV_AUTHORITATIVE)
+            else "sheet+research" if k in seed_fields
+            else "research"
+        )
+        field_provenance.append({"field": k, "source": src})
+
+    await adispatch_custom_event(
+        "research_summary",
+        {
+            "searches": searches,
+            "sources": sorted(set(sources)),
+            "fieldsPopulated": [k for k, v in intel.items() if not _is_empty(v)],
+            "fieldProvenance": field_provenance,
+            "seedFields": sorted(seed_fields),
+        },
+        config=config,
+    )
+
+    await adispatch_custom_event(
+        "phase",
+        {"phase": 1, "label": "Website Research", "status": "complete", "data": intel},
+        config=config,
+    )
+
+    return {"website_intel": intel, "errors": []}
+
+
 # ── Public node — dispatcher ───────────────────────────────────────────────────
 
 async def research_node(state: IntelState, config: RunnableConfig) -> dict:
@@ -605,5 +729,10 @@ async def research_node(state: IntelState, config: RunnableConfig) -> dict:
             )
             return {**result, "errors": []}
         except Exception as e:
-            log.warning("Deep research failed (%s), falling back to DDG loop", e)
-    return await _ddg_research_loop(state, config)
+            log.warning("Deep research failed (%s), falling back", e)
+
+    try:
+        return await _grounded_research(state, config)
+    except Exception as e:
+        log.warning("Grounded research failed (%s), falling back to DDG loop", e)
+        return await _ddg_research_loop(state, config)
