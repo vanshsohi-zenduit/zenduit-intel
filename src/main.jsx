@@ -7,11 +7,13 @@ import LeadDetail from './pages/LeadDetail.jsx'
 import Login from './pages/Login.jsx'
 import { getAuthToken } from './lib/auth.js'
 
+const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+
 function ProtectedRoute({ children }) {
   const [state, setState] = useState('loading');
 
   useEffect(() => {
-    fetch('/api/health')
+    fetch(`${API_BASE}/health`)
       .then(r => r.ok ? r.json() : null)
       .then(h => {
         if (!h?.auth_required) {
