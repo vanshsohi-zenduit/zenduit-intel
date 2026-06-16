@@ -27,8 +27,7 @@ _PRIVATE_IP = re.compile(
     r"^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$|fc00:|fe80:)"
 )
 
-RESEARCH_MODEL = get_config("GEMINI_RESEARCH_MODEL", "gemini-3.5-flash")
-DEEP_RESEARCH_MODEL = get_config("GEMINI_DEEP_RESEARCH_MODEL", "")
+RESEARCH_MODEL = get_config("GEMINI_RESEARCH_MODEL", "gemini-2.0-flash")
 
 _REGION_BLOCKLIST = {
     "north america", "usa", "united states", "canada", "europe",
@@ -336,7 +335,7 @@ async def _deep_research_gemini(state: IntelState) -> dict:
 
     api_key = get_config("GOOGLE_API_KEY")
     client = genai.Client(api_key=api_key)
-    model = DEEP_RESEARCH_MODEL or "deep-research-preview-04-2026"
+    model = get_config("GEMINI_DEEP_RESEARCH_MODEL", "deep-research-preview-04-2026")
 
     loop = _asyncio.get_event_loop()
     interaction = await loop.run_in_executor(
@@ -712,9 +711,10 @@ async def _grounded_research(state: IntelState, config: RunnableConfig) -> dict:
 # ── Public node — dispatcher ───────────────────────────────────────────────────
 
 async def research_node(state: IntelState, config: RunnableConfig) -> dict:
-    if DEEP_RESEARCH_MODEL:
+    deep_research_model = get_config("GEMINI_DEEP_RESEARCH_MODEL", "")
+    if deep_research_model:
         try:
-            log.info("Using Deep Research model: %s", DEEP_RESEARCH_MODEL)
+            log.info("Using Deep Research model: %s", deep_research_model)
             await adispatch_custom_event(
                 "phase",
                 {"phase": 1, "label": "Website Research (Deep)", "status": "start"},
