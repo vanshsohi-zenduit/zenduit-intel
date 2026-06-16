@@ -27,7 +27,7 @@ _PRIVATE_IP = re.compile(
     r"^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$|fc00:|fe80:)"
 )
 
-RESEARCH_MODEL = get_config("GEMINI_RESEARCH_MODEL", "gemini-2.0-flash")
+RESEARCH_MODEL = get_config("GEMINI_RESEARCH_MODEL", "gemini-3.5-flash")
 
 _REGION_BLOCKLIST = {
     "north america", "usa", "united states", "canada", "europe",
