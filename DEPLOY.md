@@ -270,6 +270,48 @@ git pull && docker compose up --build -d
 If something breaks: `git checkout <previous-commit> && docker compose up --build -d`.
 Your `./data` folder is untouched, so you roll straight back.
 
+### Pulling updates when you have LOCAL changes on the Mac
+
+`git pull` will refuse (or conflict) if you've edited tracked files locally. First
+see what you changed:
+
+```bash
+git status
+```
+
+**Runtime config/data is never at risk.** `.env`, `credentials.json`, `data/`,
+`company-brain/.env`, and the Postgres volume are all gitignored or outside git —
+`git pull` never touches them. You only need to preserve edits to *tracked source
+files*.
+
+**Recommended — commit your local changes, then pull (preserves them in history):**
+```bash
+git add -A
+git commit -m "Local Mac changes: <describe>"
+git pull --rebase origin dev     # replays your commit on top of the pushed changes
+docker compose up --build -d
+```
+If the rebase reports a conflict: open the flagged files, keep the right lines,
+then `git add <files> && git rebase --continue`. To bail out and return to where
+you were: `git rebase --abort`.
+
+Optionally share your Mac changes back so both machines match:
+```bash
+git push origin dev
+```
+
+**Alternative — shelve changes temporarily (if they're throwaway/experimental):**
+```bash
+git stash push -m "mac wip"
+git pull origin dev
+git stash pop                    # re-applies your changes on top; resolve any conflicts
+docker compose up --build -d
+```
+
+> Which to use: **commit** if the changes are real and you want to keep them;
+> **stash** if they're scratch edits you may discard. When unsure, commit — it's
+> always recoverable.
+
 ---
 
 ## Troubleshooting
