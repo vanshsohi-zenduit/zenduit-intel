@@ -172,6 +172,56 @@ domain; no code change needed — swap the `cloudflared` command for your tunnel
 
 ---
 
+## Updating the app (shipping new code)
+
+The loop is: push on the dev machine → pull + rebuild on the Mac.
+
+```bash
+# On the dev machine
+git add -A && git commit -m "your change" && git push origin dev
+
+# On the Mac
+git pull
+docker compose up --build -d
+```
+
+**Your data is safe across updates.** A rebuild replaces the app *image* only — it
+never touches the Postgres `pgdata` volume or the `./data` JSON files:
+
+| Data | Survives `up --build -d`? |
+|---|---|
+| User accounts / logins | ✅ (Postgres volume untouched by rebuilds) |
+| Leads, credentials, leaderboard, outcomes | ✅ (`./data/*.json` on disk, not in the image) |
+
+Only `docker compose down -v` wipes the users volume. A plain rebuild never does.
+
+**What changes during an update:**
+- **Brief downtime** — a few seconds while the old container is swapped for the new one.
+- **The public URL is preserved** — compose recreates only the `app` service (its
+  image changed) and leaves `cloudflared` running, so the `*.trycloudflare.com` URL
+  stays the same. It only rotates if you restart/recreate `cloudflared` or run `down`.
+
+**Three gotchas:**
+1. **Always use `--build`.** The React frontend is baked into the image at build time.
+   A plain `docker compose up -d` (no `--build`) keeps serving the *old* frontend.
+2. **Dependency changes are automatic.** New `requirements.txt` / `package.json`
+   entries are installed by the rebuild — no extra step.
+3. **DB schema changes are the one caveat.** Startup runs `create_all`, which only
+   *creates missing tables* — it does NOT alter existing ones. Adding a column to the
+   `User` model won't apply to an existing Postgres volume; that needs a manual
+   `ALTER TABLE` / migration. All other stores are schema-less JSON, so unaffected.
+
+**Safe-update habit — snapshot before a risky change (it's just files):**
+```bash
+cp -r data data.backup-$(date +%F)
+docker compose exec postgres pg_dump -U intel intel > users-$(date +%F).sql   # optional
+git pull && docker compose up --build -d
+```
+If something breaks: `git checkout <previous-commit> && docker compose up --build -d`.
+Your `./data` folder is untouched, so you roll straight back.
+
+---
+
 ## Troubleshooting
 - **`app` restarts / exits immediately** → `docker compose logs app`. Most common
   cause: `JWT_SECRET` blank while `AUTH_DISABLED` is also blank. Set `JWT_SECRET`.
