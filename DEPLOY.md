@@ -131,6 +131,15 @@ Auth: if you set `MCP_API_KEY` in `company-brain/.env`, set the **same value** a
 `BRAIN_MCP_API_KEY` in this repo's `.env`. Leave both blank to disable auth
 (safe — `brain-mcp` is internal-only, never exposed to the host or internet).
 
+**Network exposure — `brain-mcp` is NOT publicly accessible.** It has no `ports:`
+mapping in `docker-compose.yml`, so it is never published to the Mac's network or
+the internet. It lives only on the private `intel-net` Docker network, reachable
+solely by the `app` container at `http://brain-mcp:3100`. `cloudflared` tunnels
+*only* `app:3001` to the public URL — it does not expose `brain-mcp`. Traffic only
+flows one way out: `brain-mcp` dials OUT to Supabase; nothing can dial in. (If you
+ever need to hit it from the Mac itself for debugging, add a loopback-only mapping
+`ports: ["127.0.0.1:3100:3100"]` — never bind `0.0.0.0`.)
+
 > **Skipping Brain?** If you don't clone `company-brain`, `docker compose up
 > --build` will fail trying to build `brain-mcp`. Either clone it, or comment out
 > the `brain-mcp` service block in `docker-compose.yml` — the `app` does not depend
@@ -234,6 +243,13 @@ git add -A && git commit -m "your change" && git push origin dev
 git pull
 docker compose up --build -d
 ```
+
+> **Changed only env vars on the Mac?** (`.env` or `company-brain/.env`) — those
+> are gitignored, so `git pull` never touches them and there's nothing to preserve.
+> Just pull and rebuild as above. Note env-var edits need a **container recreate**
+> to take effect: `docker compose up -d --force-recreate` (add `--build` if you also
+> pulled code). Editing a file inside a running container does nothing — the value
+> is read from `.env`/compose at container start.
 
 **Your data is safe across updates.** A rebuild replaces the app *image* only — it
 never touches the Postgres `pgdata` volume or the `./data` JSON files:
