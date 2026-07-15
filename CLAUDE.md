@@ -41,7 +41,7 @@ The Vite dev server proxies `/api/*` to `http://localhost:3001`.
 
 For **local dev without login**, set `AUTH_DISABLED=1` (env or `.env`). With auth enabled you must set `JWT_SECRET` or the backend refuses to start.
 
-**Credentials:** All API keys are managed via the in-app **Settings** tab (gear icon in sidebar). They are saved to `credentials.json` and loaded into `os.environ` at startup via `app/credentials.py`. Auth/DB vars (`JWT_SECRET`, `DATABASE_URL`, `ADMIN_*`, `AUTH_DISABLED`, `POSTGRES_*`) are **deliberately NOT in the Settings schema** — they come from env/compose only, so `credentials.json` can't shadow them.
+**Credentials:** Most API keys are managed via the in-app **Settings** tab (gear icon in sidebar). They are saved to `credentials.json` and loaded into `os.environ` at startup via `app/credentials.py`. A set of `ENV_ONLY_FIELDS` are **deliberately NOT in the Settings schema and are never merged from `credentials.json` into `os.environ`** — so env/compose always wins and the UI (or a stale credentials.json) can't shadow them. This covers the auth/DB vars (`JWT_SECRET`, `DATABASE_URL`, `ADMIN_*`, `AUTH_DISABLED`, `POSTGRES_*`, `DATA_DIR`) **and the Brain MCP vars** (`BRAIN_MCP_URL`, `BRAIN_MCP_API_KEY`) — Brain is pinned to the internal self-hosted `brain-mcp` compose service (`BRAIN_MCP_URL=http://brain-mcp:3100`), not user-editable.
 
 ### Production (self-hosted on a Mac with Docker Desktop)
 
@@ -67,8 +67,8 @@ All of these can be set via the Settings tab in the UI. The backend reads them f
 | `GEMINI_RESEARCH_MODEL` | No | Research model (default: `gemini-2.0-flash`) |
 | `GEMINI_GENERATION_MODEL` | No | Strategy generation model (default: `gemini-2.0-flash`) |
 | `DEEP_RESEARCH_MODE` | No | Set to `true` to enable the multi-subagent grounded deep-research pipeline (planner → 4 parallel extractors → reconciler). Slower + more API calls than the default single-shot grounded path |
-| `BRAIN_MCP_URL` | No | Brain MCP Railway URL |
-| `BRAIN_MCP_API_KEY` | No | Brain MCP auth key |
+| `BRAIN_MCP_URL` | No | Brain MCP URL — **env/compose only** (not in Settings). Compose pins it to `http://brain-mcp:3100` (internal self-hosted service) |
+| `BRAIN_MCP_API_KEY` | No | Brain MCP auth key — **env/compose only**. Must match company-brain's `MCP_API_KEY`; leave blank both sides to disable auth |
 | `LINKEDIN_MCP_URL` | No | LinkedIn MCP URL |
 | `N8N_BASE_URL` | No | n8n instance URL |
 | `N8N_RESEARCH_WEBHOOK_PATH` | No | Webhook path (default: `/webhook/company-research`) |

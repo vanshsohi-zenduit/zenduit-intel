@@ -175,8 +175,13 @@ Locally on the Mac you can also reach it at **http://localhost:3001**.
 
 ### B7. Post-launch: finish configuration in-app
 Log in → gear icon (**Settings**) → fill in optional integration keys
-(Brain MCP, n8n, ClickUp, Gmail, Slack, Zoho). These save to
-`data/credentials.json` and load into the backend automatically.
+(n8n, ClickUp, Gmail, Slack, Zoho). These save to `data/credentials.json` and
+load into the backend automatically.
+
+> **Company Brain is NOT in Settings** (by design). It's pinned to the internal
+> self-hosted `brain-mcp` service via compose (`BRAIN_MCP_URL=http://brain-mcp:3100`)
+> and cannot be overridden from the UI or a stale `credentials.json`. Configure it
+> only through `company-brain/.env` (data/credentials) as described in B4b.
 
 To add more rep/user logins: as the admin, use the user-creation flow
 (`POST /api/users` is admin-gated).
