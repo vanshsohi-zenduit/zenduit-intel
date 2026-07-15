@@ -34,6 +34,11 @@ services:
       DATA_DIR: /data
       # Overrides any DATABASE_URL in .env — service name `postgres` is the host.
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-intel}:${POSTGRES_PASSWORD:-intel}@postgres:5432/${POSTGRES_DB:-intel}
+      # Overrides any (stale Railway) BRAIN_MCP_URL in .env — talk to the internal
+      # brain-mcp service instead. The client appends /mcp itself.
+      BRAIN_MCP_URL: http://brain-mcp:3100
+      # BRAIN_MCP_API_KEY still comes from .env — it MUST equal company-brain's
+      # MCP_API_KEY. Leave BOTH blank to disable auth (fine on this internal network).
     volumes:
       # Bind mount so the four JSON stores persist and can be seeded/backed up.
       - ./data:/data
@@ -50,6 +55,23 @@ services:
     image: cloudflare/cloudflared:latest
     command: tunnel --no-autoupdate --url http://app:3001
     depends_on: [app]
+    restart: unless-stopped
+    networks: [intel-net]
+
+  # Company Brain MCP — CRM/meeting/product intelligence for the context phase.
+  # Built from the SEPARATE company-brain repo, which must be cloned as a sibling
+  # of this repo (../company-brain). It is only a query layer over Supabase, so it
+  # needs company-brain/.env (SUPABASE_*, GEMINI_API_KEY, ZOHO_*). Internal only —
+  # no host/internet port; the app reaches it at http://brain-mcp:3100.
+  # NOTE: `app` does NOT depend_on this — if the brain is down the app degrades to
+  # its static product-context fallback rather than failing.
+  brain-mcp:
+    build:
+      context: ../company-brain
+      dockerfile: packages/brain-mcp/Dockerfile
+    env_file: [../company-brain/.env]
+    environment:
+      MCP_PORT: 3100
     restart: unless-stopped
     networks: [intel-net]
 

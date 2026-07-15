@@ -102,19 +102,64 @@ mkdir -p data
 
 Starting fresh is fine — the files are created on first use.
 
+### B4b. Company Brain MCP (recommended — CRM/meeting intelligence)
+The compose stack includes a `brain-mcp` service that powers the "Product
+Intelligence" phase (matched customer wins, meeting quotes, battlecards). It is
+built from the **separate `company-brain` repo**, which must be cloned as a
+**sibling** of this repo, and it only queries an existing **Supabase** database —
+so it needs `company-brain/.env` with the Supabase + Gemini + Zoho credentials.
+
+```bash
+# From the PARENT folder that contains outbound-intel (a.k.a. zenduit-intel):
+cd ..
+git clone https://github.com/vanshsohi-zenduit/company-brain.git
+cd company-brain
+cp .env.example .env      # then fill: SUPABASE_URL, SUPABASE_DB_URL,
+                          # SUPABASE_SERVICE_ROLE_KEY, GEMINI_API_KEY, ZOHO_*,
+                          # and optionally MCP_API_KEY
+cd ../zenduit-intel       # back to this repo
+```
+
+Layout must end up as:
+```
+<parent>/
+  ├── zenduit-intel/     ← this repo (compose lives here; references ../company-brain)
+  └── company-brain/     ← sibling repo with its own .env
+```
+
+Auth: if you set `MCP_API_KEY` in `company-brain/.env`, set the **same value** as
+`BRAIN_MCP_API_KEY` in this repo's `.env`. Leave both blank to disable auth
+(safe — `brain-mcp` is internal-only, never exposed to the host or internet).
+
+> **Skipping Brain?** If you don't clone `company-brain`, `docker compose up
+> --build` will fail trying to build `brain-mcp`. Either clone it, or comment out
+> the `brain-mcp` service block in `docker-compose.yml` — the `app` does not depend
+> on it and will fall back to static product context.
+
+> **LinkedIn MCP is intentionally not wired up** (it scrapes LinkedIn via a real
+> logged-in account — ToS/ban risk). The LinkedIn phase self-skips when
+> `LINKEDIN_MCP_URL` is unset. To enable it later, add a `linkedin-mcp` service and
+> set `LINKEDIN_MCP_URL=http://linkedin-mcp:<port>`.
+
 ### B5. Build and start
 ```bash
 docker compose up --build -d
 ```
 
-First build takes a few minutes (installs npm + Python deps, builds the SPA).
-`-d` runs it detached. Check everything came up healthy:
+First build takes a few minutes (installs npm + Python deps, builds the SPA, and
+builds `brain-mcp` from `../company-brain`). `-d` runs it detached. Check health:
 
 ```bash
 docker compose ps
 ```
 
-You want `postgres` healthy and `app` + `cloudflared` running.
+You want `postgres` + `brain-mcp` healthy and `app` + `cloudflared` running.
+Verify the brain is reachable from the app's network:
+
+```bash
+docker compose exec app python -c "import urllib.request,json; print(json.load(urllib.request.urlopen('http://brain-mcp:3100/health')))"
+# → {'ok': True, 'service': 'company-brain-mcp', 'transport': 'http'}
+```
 
 ### B6. Get your public URL
 `cloudflared` prints a rotating public HTTPS URL in its logs:
