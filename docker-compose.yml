@@ -1,0 +1,60 @@
+# Self-hosted stack for Zenduit Outbound Intelligence.
+#   app         — FastAPI serving the built SPA + /api on :3001 (internal)
+#   postgres    — users/auth table only (internal, never exposed)
+#   cloudflared — outbound tunnel giving a public HTTPS URL (no inbound ports)
+#
+# Public access: NONE of these publish a port to the internet. Only cloudflared
+# dials OUT to Cloudflare's edge. Read the live URL with:
+#   docker compose logs cloudflared | grep trycloudflare.com
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-intel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-intel}
+      POSTGRES_DB: ${POSTGRES_DB:-intel}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-intel} -d ${POSTGRES_DB:-intel}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks: [intel-net]
+    # Uncomment for a local psql client; keep it loopback-only, never 0.0.0.0:
+    # ports: ["127.0.0.1:5432:5432"]
+
+  app:
+    build: .
+    env_file: [.env]
+    environment:
+      DATA_DIR: /data
+      # Overrides any DATABASE_URL in .env — service name `postgres` is the host.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-intel}:${POSTGRES_PASSWORD:-intel}@postgres:5432/${POSTGRES_DB:-intel}
+    volumes:
+      # Bind mount so the four JSON stores persist and can be seeded/backed up.
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [intel-net]
+    # Local debug only (loopback). Public traffic arrives via cloudflared, not this.
+    ports:
+      - "127.0.0.1:3001:3001"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://app:3001
+    depends_on: [app]
+    restart: unless-stopped
+    networks: [intel-net]
+
+volumes:
+  pgdata:
+
+networks:
+  intel-net:

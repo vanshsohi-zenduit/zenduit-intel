@@ -26,6 +26,7 @@ dist-ssr
 # Environment secrets
 .env
 .env.*
+!.env.example
 
 # Runtime data
 library.json
@@ -33,4 +34,19 @@ outcomes.json
 credentials.json
 sync_state.json
 
+# Docker bind-mount data dir (holds copies of the JSON stores incl. credentials)
+data/
+verify.db
+
 CLAUDE.md
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Local tooling / non-app artifacts
+.agents/
+skills-lock.json
+Zenduit Outbound Intelligence-handoff/
+# Nested standalone repo (separate MCP server, deployed independently)
+linkedin-mcp-server/

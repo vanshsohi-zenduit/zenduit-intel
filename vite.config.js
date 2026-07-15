@@ -15,12 +15,6 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
-      '/coach': {
-        target: 'http://localhost:3002',
-        changeOrigin: true,
-        rewrite: path => path.replace(/^\/coach/, ''),
-        ws: true,
-      },
     },
   },
 })

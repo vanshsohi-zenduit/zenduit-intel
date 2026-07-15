@@ -1,0 +1,32 @@
+# Version control / tooling
+.git
+.gitignore
+.claude
+.agents
+
+# Secrets & runtime data — MUST never enter an image layer
+.env
+.env.*
+credentials.json
+library.json
+outcomes.json
+sync_state.json
+data/
+
+# Node / build artifacts (frontend is rebuilt inside the image)
+node_modules
+dist
+
+# Python caches
+**/__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+
+# Vendored sidecar (runs as its own container, not part of this image)
+linkedin-mcp-server
+
+# Misc / large local-only assets
+Zenduit Outbound Intelligence-handoff/
+*.pptx

@@ -12,12 +12,15 @@ company research, executive briefing, objection handling, 14-day outreach sequen
 |---|---|
 | Frontend | React 19 + Vite + Tailwind CSS v4 + Framer Motion + React Router v7 |
 | Backend | Python FastAPI + LangGraph |
-| LLM | Google Gemini (`gemini-2.0-flash` default) + optional Deep Research API |
+| LLM | Google Gemini (`gemini-3.5-flash` default) + optional multi-subagent deep research |
 | Product context | Brain MCP (Railway) — `company-brain` server |
-| Research | n8n webhook → fallback to inline Gemini agent (DDG loop) → optional Deep Research |
+| Research | grounded Gemini (Google Search) → DDG loop fallback; optional multi-subagent deep-research mode |
 | Library | Flat JSON file `library.json` (gitignored) |
 | Credentials | `credentials.json` (gitignored) — managed via in-app Settings tab |
 | Sync state | `sync_state.json` (gitignored) — ClickUp task tracking + leaderboard |
+| Auth | Multi-user email + password (bcrypt), login issues a **JWT** (PyJWT HS256). `app/auth.py` |
+| Users DB | **Postgres** (async SQLAlchemy) — `users` table ONLY; all other stores stay JSON. `app/db.py`, `app/models.py` |
+| Deploy | Docker Compose on a Mac: `app` (FastAPI serves `dist/` + `/api`) + `postgres` + `cloudflared` (public tunnel) |
 
 ---
 
@@ -36,7 +39,21 @@ npm run dev
 
 The Vite dev server proxies `/api/*` to `http://localhost:3001`.
 
-**Credentials:** All API keys are managed via the in-app **Settings** tab (gear icon in sidebar). They are saved to `credentials.json` and loaded into `os.environ` at startup via `app/credentials.py`. You do not need a `.env` file — the Settings UI replaces it.
+For **local dev without login**, set `AUTH_DISABLED=1` (env or `.env`). With auth enabled you must set `JWT_SECRET` or the backend refuses to start.
+
+**Credentials:** All API keys are managed via the in-app **Settings** tab (gear icon in sidebar). They are saved to `credentials.json` and loaded into `os.environ` at startup via `app/credentials.py`. Auth/DB vars (`JWT_SECRET`, `DATABASE_URL`, `ADMIN_*`, `AUTH_DISABLED`, `POSTGRES_*`) are **deliberately NOT in the Settings schema** — they come from env/compose only, so `credentials.json` can't shadow them.
+
+### Production (self-hosted on a Mac with Docker Desktop)
+
+```bash
+cp .env.example .env    # fill JWT_SECRET (openssl rand -hex 32), ADMIN_EMAIL/PASSWORD,
+                        # POSTGRES_PASSWORD, GOOGLE_API_KEY, …  (leave AUTH_DISABLED unset)
+mkdir -p data && cp library.json credentials.json data/   # carry over existing JSON stores
+docker compose up --build -d
+docker compose logs cloudflared | grep trycloudflare.com  # → the public HTTPS URL
+```
+
+The `app` container serves the built SPA **and** `/api` same-origin on :3001; only `cloudflared` reaches the internet (outbound — no inbound ports). JSON stores persist via bind mount `./data` (`DATA_DIR=/data`); Postgres via named volume `pgdata`. The quick-tunnel `*.trycloudflare.com` URL **rotates on `cloudflared` restart** (JWTs survive it — no `aud` binding); a Cloudflare domain gives a permanent named-tunnel subdomain with no code change.
 
 ---
 
@@ -49,7 +66,7 @@ All of these can be set via the Settings tab in the UI. The backend reads them f
 | `GOOGLE_API_KEY` | **Yes** | Gemini API key (AIza...) |
 | `GEMINI_RESEARCH_MODEL` | No | Research model (default: `gemini-2.0-flash`) |
 | `GEMINI_GENERATION_MODEL` | No | Strategy generation model (default: `gemini-2.0-flash`) |
-| `GEMINI_DEEP_RESEARCH_MODEL` | No | Set to `deep-research-preview-04-2026` to enable Deep Research (takes 3-10 min/lead) |
+| `DEEP_RESEARCH_MODE` | No | Set to `true` to enable the multi-subagent grounded deep-research pipeline (planner → 4 parallel extractors → reconciler). Slower + more API calls than the default single-shot grounded path |
 | `BRAIN_MCP_URL` | No | Brain MCP Railway URL |
 | `BRAIN_MCP_API_KEY` | No | Brain MCP auth key |
 | `LINKEDIN_MCP_URL` | No | LinkedIn MCP URL |
@@ -66,8 +83,19 @@ All of these can be set via the Settings tab in the UI. The backend reads them f
 | `ZOHO_WEBHOOK_SECRET` | No | Optional — Zoho Flow sends this as `X-Zoho-Signature` header |
 | `SLACK_WEBHOOK_URL` | No | Slack incoming webhook for BOOKED alerts |
 | `PUBLIC_APP_URL` | No | Base URL for shareable lead links (default: `http://localhost:8080`) |
-| `API_SECRET` | No | Bearer token to protect mutation endpoints |
 | `ALLOWED_ORIGIN` | No | CORS origin (default: `http://localhost:8080`) |
+
+**Auth / DB vars (env or compose only — NOT in the Settings schema):**
+
+| Variable | Required | Description |
+|---|---|---|
+| `JWT_SECRET` | **Yes** (unless `AUTH_DISABLED=1`) | Secret used to sign login JWTs (`openssl rand -hex 32`). Startup hard-fails if missing |
+| `JWT_TTL_HOURS` | No | Token lifetime (default `12`) |
+| `AUTH_DISABLED` | No | `1` = open API / dev mode (bypasses all auth). **Leave unset in production** |
+| `DATABASE_URL` | **Yes** (unless `AUTH_DISABLED`) | e.g. `postgresql+asyncpg://intel:pw@postgres:5432/intel`. Compose builds this from the `POSTGRES_*` vars |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Docker | Seed the Postgres container + build `DATABASE_URL` |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | No | Seeds an admin user on first startup (idempotent) |
+| `DATA_DIR` | No | Directory for the JSON stores (default cwd; `/data` in Docker). **Must be a real env var**, not in `credentials.json` |
 
 ---
 
@@ -86,9 +114,14 @@ context_node → research_node → strategy_node → complete_node → END
 - Falls back to hardcoded `ZENDUIT_CONTEXT` if Brain MCP is unavailable
 
 **Phase 2 — research_node** (`app/nodes/research_node.py`)
+Dispatcher: if `DEEP_RESEARCH_MODE` is truthy → Path B (deep). Otherwise → Path C (grounded), falling back to Path D on failure.
 - **Path A (n8n)**: POSTs to `N8N_BASE_URL + N8N_RESEARCH_WEBHOOK_PATH`. Expects full intel JSON in response.
-- **Path B (Deep Research)**: If `GEMINI_DEEP_RESEARCH_MODEL` is set, calls Google's Interactions API (`client.interactions.create(input=query, agent=model, background=True)`), polls every 10s up to 60 iterations, then parses the report with Gemini Flash into structured JSON. Falls back to Path C on failure.
-- **Path C (inline DDG loop)**: Runs a Gemini tool-use loop (up to 8 iterations) with `web_search` (DuckDuckGo) and `web_fetch` tools. SSRF protection blocks private IPs.
+- **Path B (Simulated Deep Research — multi-subagent)**: enabled by `DEEP_RESEARCH_MODE=true`. Fans out grounded Gemini calls to *simulate* a deep-research agent (replaces the old Interactions API model):
+  1. **Planner** (`_plan_queries`) — one non-grounded call breaks the company into 4 targeted search queries (JSON array; falls back to static templates on parse failure).
+  2. **Extractors** (`_extract_facts`) — the 4 queries run **in parallel** (`asyncio.gather(..., return_exceptions=True)`), each a grounded Gemini call (`GoogleSearch()`), tolerating partial failure.
+  3. **Reconciler** (`_reconcile`) — one non-grounded call folds all findings into the app's full `_INTEL_SCHEMA`, computing `fleetSize`, `currentFleetPlatform`, `trackableAssets`, `displacementAngle`, `decisionMakerHint`. Emits the same `tool`/`research_summary`/`phase` SSE events as Path C. Falls back to Path C on failure.
+- **Path C (Google Search Grounding)**: single grounded `generate_content` call via `_grounded_generate()`. Default interactive path; works reliably from cloud servers.
+- **Path D (inline DDG loop)**: Runs a Gemini tool-use loop (up to 8 iterations) with `web_search` (DuckDuckGo) and `web_fetch` tools. SSRF protection blocks private IPs. Final fallback.
 - **HQ fix**: `_blank_vague_hq()` blanks values like "North America", "USA", "Canada" from `_REGION_BLOCKLIST` post-parse. Prompt includes a dedicated LOCATION step requiring "City, State/Province, Country" format.
 - Returns structured intel JSON matching the schema in `research_node.py`.
 
@@ -200,8 +233,12 @@ The `/api/generate` endpoint streams these events:
 
 ### All endpoints
 
+"Auth" below: `required` = valid **JWT** bearer token (or any request when `AUTH_DISABLED=1`); `—`/`optional` endpoints still carry `Depends(verify_api_key)` in code but tolerate dev mode.
+
 | Route | Auth | Description |
 |---|---|---|
+| `POST /api/auth/login` | public | `{email,password}` → `{token: <JWT>}`. Rate-limited 5/min; generic 401 on failure |
+| `POST /api/users` | admin | Create a user (admin JWT required). `{email,password,is_admin}` |
 | `POST /api/generate` | optional | Full 4-phase SSE pipeline |
 | `POST /api/bulk` | optional | Dynamic per-row intel extraction + scoring (max 20 rows) |
 | `GET /api/library` | — | Read saved prospect library |
@@ -250,7 +287,10 @@ The `/api/generate` endpoint streams these events:
 
 | File | Purpose |
 |---|---|
-| `app/main.py` | FastAPI app, all endpoints, lifespan (starts ClickUp poll loop) |
+| `app/main.py` | FastAPI app, all endpoints, lifespan (init DB + seed admin + start ClickUp poll loop) |
+| `app/auth.py` | bcrypt hash/verify, JWT issue/decode, `verify_api_key` + `require_admin` deps, `auth_disabled()` |
+| `app/db.py` | Async SQLAlchemy engine/session, `init_db()` (retry/backoff), `get_sessionmaker()` |
+| `app/models.py` | `User` SQLAlchemy model (email, password_hash, is_admin, is_active) |
 | `app/credentials.py` | `load_credentials()`, `get_config()`, `SETTINGS_SCHEMA`, `PLAINTEXT_FIELDS` |
 | `app/library.py` | `read_library`, `write_library`, `append_library_entry` (locked), `get_library_entry` |
 | `app/sync_state.py` | `sync_state.json` — Zoho dedup, ClickUp task metadata, leaderboard |
@@ -261,7 +301,7 @@ The `/api/generate` endpoint streams these events:
 | `app/rep_directory.py` | `resolve_rep(name, email)` → `{name, email, clickupMemberId}` |
 | `app/clients/clickup.py` | `CLICKUP_MEMBERS` dict (~100 reps), `create_lead_task()`, `fetch_tasks()` |
 | `app/clients/zoho_crm.py` | `extract_lead_fields_ai(payload)` — Gemini-powered dynamic field extraction |
-| `app/nodes/research_node.py` | DDG loop + Deep Research dispatcher + HQ vague-region fix |
+| `app/nodes/research_node.py` | Research dispatcher: grounded / multi-subagent deep research / DDG loop + HQ vague-region fix |
 | `app/graph.py` | LangGraph pipeline definition |
 | `app/state.py` | `IntelState` TypedDict |
 | `app/outcomes.py` | Outcome CRUD + stats aggregation |
@@ -273,9 +313,11 @@ The `/api/generate` endpoint streams these events:
 
 **`load_credentials()` must be called first.** It's the first statement after imports in `app/main.py`. `research_node.py` has module-level `get_config()` calls that run at import time — if `load_credentials()` runs after the import, credentials won't be available.
 
+**Auth is multi-user JWT, not a shared secret.** Login (`POST /api/auth/login`) verifies `{email,password}` against the Postgres `users` table (bcrypt) and returns a signed JWT; the frontend stores it in `localStorage` and sends `Authorization: Bearer <jwt>`. `verify_api_key` (in `app/auth.py`, imported into `main.py` under the SAME name) validates the JWT statelessly — so all existing `Depends(verify_api_key)` sites are unchanged. `require_admin` gates `POST /api/users`. Dev bypass is gated ONLY on `AUTH_DISABLED=1` (never "empty secret"); startup hard-fails if `JWT_SECRET` is missing while auth is enabled. Health `auth_required = not auth_disabled()`. Anti-enumeration: unknown-email / bad-password / inactive all return the same `401 "Invalid email or password"`. Login is rate-limited 5/min. `aiosqlite` is a test-only stand-in — production uses `asyncpg`.
+
 **`append_library_entry()` not `write_library()` for new saves.** The append function uses `asyncio.Lock` to prevent race conditions when multiple saves arrive concurrently (e.g. bulk upload).
 
-**Deep Research is slow by design.** 3–10 minutes per lead. Only activate `GEMINI_DEEP_RESEARCH_MODEL` for background/webhook flows, not interactive use. The DDG loop (Path C) is better for the browser SSE flow.
+**Deep research mode fans out ~6 Gemini calls.** `DEEP_RESEARCH_MODE=true` runs planner + 4 parallel grounded extractors + reconciler — more thorough but more API calls and mind rate limits. Leave it off for the fast single-shot grounded path (default). The 4 extractors run in parallel and tolerate partial failure (`return_exceptions=True`), so one failed search won't sink the run.
 
 **ClickUp member dict is hardcoded.** `app/clients/clickup.py` contains `CLICKUP_MEMBERS` with ~100 reps. To add/remove reps, edit this dict directly. `resolve_clickup_id()` does fuzzy matching: exact → case-insensitive → first-name.
 
@@ -302,7 +344,8 @@ The following files are superseded and can be deleted:
 
 - `StrategyDisplay.jsx` — LLM HTML is sanitized with DOMPurify before rendering
 - `research_node.py` — `web_fetch` blocks RFC-1918 + loopback addresses (SSRF protection)
-- Rate limiting: 10 req/min on `/api/generate`, 40/min on `/api/bulk`, 60/min on `/api/library/entry`
-- Auth: set `API_SECRET` in Settings to require `Authorization: Bearer <secret>` on mutation endpoints
-- CORS: locked to `ALLOWED_ORIGIN` (default `http://localhost:8080`)
-- `credentials.json` and `sync_state.json` are gitignored
+- Rate limiting: 10 req/min on `/api/generate`, 40/min on `/api/bulk`, 60/min on `/api/library/entry`, 5/min on `/api/auth/login`
+- Auth: multi-user JWT (see Key patterns). `JWT_SECRET` required; passwords bcrypt-hashed; `AUTH_DISABLED=1` opens the API for local dev only
+- CORS: locked to `ALLOWED_ORIGIN` (default `http://localhost:8080`); production is single-origin so CORS is moot for the SPA
+- `credentials.json`, `sync_state.json`, `.env`, and `data/` are gitignored; `.dockerignore` keeps `.env`/`credentials.json`/data out of image layers
+- `GET /api/library/{lead_id}` is intentionally public (the `/lead/:id` share page) — safety rests on unguessable `uuid4().hex` IDs

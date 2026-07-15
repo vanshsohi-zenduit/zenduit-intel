@@ -13,3 +13,8 @@ slowapi>=0.1.9
 mcp>=1.0.0
 duckduckgo-search>=6.0.0
 google-genai>=0.8.0
+# Auth + users database (Postgres)
+sqlalchemy[asyncio]>=2.0.0
+asyncpg>=0.29.0
+bcrypt>=4.1.0
+PyJWT>=2.9.0

@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Zap, CheckCircle, AlertCircle, Loader, Database, Menu, X, Settings } from 'lucide-react';
+import { CheckCircle, Loader, Database, Menu, X, LogOut } from 'lucide-react';
 import { checkHealth } from '../lib/mcpClient.js';
+import { clearAuthToken } from '../lib/auth.js';
 import LinkedInIcon from './LinkedInIcon.jsx';
 
-const Header = ({ activeIntel, onMenuToggle, sidebarOpen }) => {
-  const [status,        setStatus]        = useState('connecting');
-  const [brainOnline,   setBrainOnline]   = useState(false);
+// Toolbar — lives inside the floating white content card (per ZenduONE design).
+// Left: mobile menu toggle + active tab label. Right: active company + live
+// backend/MCP health status (real, from checkHealth).
+const Header = ({ tabLabel, activeIntel, onMenuToggle, sidebarOpen }) => {
+  const [status,         setStatus]         = useState('connecting');
+  const [brainOnline,    setBrainOnline]    = useState(false);
   const [linkedinOnline, setLinkedinOnline] = useState(false);
-  const [showSetup,     setShowSetup]     = useState(false);
+  const [showSetup,      setShowSetup]      = useState(false);
 
   useEffect(() => {
     const check = async () => {
@@ -19,14 +23,10 @@ const Header = ({ activeIntel, onMenuToggle, sidebarOpen }) => {
           setBrainOnline(!!h.brain_mcp);
           setLinkedinOnline(!!h.linkedin_mcp);
         } else {
-          setStatus('offline');
-          setBrainOnline(false);
-          setLinkedinOnline(false);
+          setStatus('offline'); setBrainOnline(false); setLinkedinOnline(false);
         }
       } catch {
-        setStatus('offline');
-        setBrainOnline(false);
-        setLinkedinOnline(false);
+        setStatus('offline'); setBrainOnline(false); setLinkedinOnline(false);
       }
     };
     check();
@@ -35,126 +35,111 @@ const Header = ({ activeIntel, onMenuToggle, sidebarOpen }) => {
   }, []);
 
   return (
-    <header
-      className="flex items-center gap-4 px-4 sm:px-6 shrink-0 z-30 sticky top-0"
-      style={{ height: '56px', background: '#1E293B', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+    <div
+      className="flex items-center justify-between shrink-0"
+      style={{ height: '60px', padding: '0 20px', borderBottom: '1px solid #EAECF0' }}
     >
-      {/* Mobile menu toggle */}
-      <button
-        onClick={onMenuToggle}
-        className="flex items-center justify-center rounded-lg lg:hidden"
-        style={{ width: '32px', height: '32px', color: '#64748B' }}
-        aria-label="Toggle navigation"
-      >
-        {sidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-      </button>
-
-      {/* Brand */}
-      <div className="flex items-center gap-2.5 shrink-0">
-        <div
-          className="flex items-center justify-center rounded-lg shrink-0"
-          style={{ width: '30px', height: '30px', background: '#3B82F6', borderRadius: '8px' }}
+      <div className="flex items-center gap-3 min-w-0">
+        <button
+          onClick={onMenuToggle}
+          className="flex items-center justify-center rounded-lg lg:hidden shrink-0"
+          style={{ width: '34px', height: '34px', color: '#667085' }}
+          aria-label="Toggle navigation"
         >
-          <Zap className="w-4 h-4 text-white" />
-        </div>
-        <div>
-          <span className="text-[15px] font-semibold" style={{ color: '#F1F5F9', letterSpacing: '-0.01em' }}>
-            Zenduit
-          </span>
-          <span className="text-[11px] ml-1.5" style={{ color: '#64748B' }}>Intel</span>
-        </div>
+          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+        <div className="text-[16px] font-bold truncate" style={{ color: '#101828' }}>{tabLabel}</div>
       </div>
 
-      <div className="flex-1" />
-
-      {/* Active company badge */}
-      {activeIntel && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg shrink-0"
-          style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.22)', maxWidth: '200px' }}
-        >
-          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#10B981' }} />
-          <span className="text-[12px] font-medium truncate" style={{ color: '#3B82F6' }}>{activeIntel}</span>
-        </motion.div>
-      )}
-
-      {/* Brain MCP badge */}
-      {brainOnline && (
-        <div
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
-          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
-          title="Brain MCP connected"
-        >
-          <Database className="w-3.5 h-3.5" style={{ color: '#10B981' }} />
-          <span className="text-[11px] font-medium" style={{ color: '#10B981' }}>Brain</span>
-        </div>
-      )}
-
-      {/* LinkedIn MCP badge */}
-      {linkedinOnline && (
-        <div
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
-          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
-          title="LinkedIn MCP connected"
-        >
-          <LinkedInIcon className="w-3.5 h-3.5" style={{ color: '#0A66C2' }} />
-          <span className="text-[11px] font-medium" style={{ color: '#0A66C2' }}>LinkedIn</span>
-        </div>
-      )}
-
-      {/* API status */}
-      <div className="relative shrink-0">
-        <button
-          onClick={() => setShowSetup(s => !s)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer' }}
-        >
-          {status === 'connecting' && <Loader className="w-3.5 h-3.5 animate-spin" style={{ color: '#64748B' }} />}
-          {status === 'online'     && <div className="w-2 h-2 rounded-full" style={{ background: '#10B981' }} />}
-          {status === 'offline'    && <div className="w-2 h-2 rounded-full" style={{ background: '#DC2626' }} />}
-          <span className="text-[12px] font-medium hidden sm:inline" style={{ color: '#94A3B8' }}>
-            {status === 'connecting' ? 'Connecting…' : status === 'online' ? 'Online' : 'Offline'}
-          </span>
-          <Settings className="w-3.5 h-3.5" style={{ color: '#64748B' }} />
-        </button>
-
-        {showSetup && (
+      <div className="flex items-center gap-2 shrink-0">
+        {activeIntel && (
           <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            className="absolute top-full right-0 mt-2 w-72 rounded-xl p-5 z-50"
-            style={{ background: '#1E293B', border: '1px solid rgba(255,255,255,0.10)' }}
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="hidden md:flex items-center gap-2 rounded-full"
+            style={{ padding: '4px 12px', background: '#E7F2FA', maxWidth: '220px' }}
           >
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-[13px] font-semibold" style={{ color: '#F1F5F9' }}>Backend Setup</p>
-              <button onClick={() => setShowSetup(false)} style={{ color: '#64748B' }}>
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div
-              className="rounded-lg p-3 mb-4"
-              style={{ background: '#0F172A', border: '1px solid rgba(255,255,255,0.06)', fontFamily: 'Inconsolata, monospace', fontSize: '12px' }}
-            >
-              <p style={{ color: '#64748B' }}># Terminal — start backend</p>
-              <p style={{ color: '#F1F5F9', marginTop: '4px' }}>uvicorn app.main:app --port 3001 --reload</p>
-            </div>
-            <p className="text-[12px] leading-relaxed" style={{ color: '#64748B' }}>
-              Proxied at <span style={{ color: '#3B82F6' }}>/api</span>.
-              {brainOnline
-                ? <span className="block mt-2" style={{ color: '#10B981' }}>✓ Brain MCP connected</span>
-                : <span className="block mt-2" style={{ color: '#64748B' }}>Brain MCP: set BRAIN_MCP_URL in .env</span>
-              }
-              {linkedinOnline
-                ? <span className="block mt-1" style={{ color: '#0A66C2' }}>✓ LinkedIn MCP connected</span>
-                : <span className="block mt-1" style={{ color: '#64748B' }}>LinkedIn MCP: set LINKEDIN_MCP_URL in .env</span>
-              }
-            </p>
+            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#12B76A' }} />
+            <span className="text-[12px] font-semibold truncate" style={{ color: '#0F5795' }}>{activeIntel}</span>
           </motion.div>
         )}
+
+        {brainOnline && (
+          <div
+            className="hidden sm:flex items-center gap-1.5 rounded-lg"
+            style={{ padding: '5px 10px', background: '#F2F4F7' }}
+            title="Brain MCP connected"
+          >
+            <Database className="w-3.5 h-3.5" style={{ color: '#039855' }} />
+            <span className="text-[11px] font-semibold" style={{ color: '#039855' }}>Brain</span>
+          </div>
+        )}
+        {linkedinOnline && (
+          <div
+            className="hidden sm:flex items-center gap-1.5 rounded-lg"
+            style={{ padding: '5px 10px', background: '#F2F4F7' }}
+            title="LinkedIn MCP connected"
+          >
+            <LinkedInIcon className="w-3.5 h-3.5" style={{ color: '#0F5795' }} />
+            <span className="text-[11px] font-semibold" style={{ color: '#0F5795' }}>LinkedIn</span>
+          </div>
+        )}
+
+        <div className="relative">
+          <button
+            onClick={() => setShowSetup(s => !s)}
+            className="flex items-center gap-2 rounded-lg"
+            style={{ padding: '6px 12px', background: '#F9FAFB', border: '1px solid #EAECF0', cursor: 'pointer' }}
+          >
+            {status === 'connecting' && <Loader className="w-3.5 h-3.5 animate-spin" style={{ color: '#98A2B3' }} />}
+            {status === 'online'     && <span className="w-2 h-2 rounded-full" style={{ background: '#12B76A' }} />}
+            {status === 'offline'    && <span className="w-2 h-2 rounded-full" style={{ background: '#F04438' }} />}
+            <span className="text-[12px] font-semibold hidden sm:inline" style={{ color: '#475467' }}>
+              {status === 'connecting' ? 'Connecting…' : status === 'online' ? 'Online' : 'Offline'}
+            </span>
+          </button>
+
+          {showSetup && (
+            <motion.div
+              initial={{ opacity: 0, y: -4, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              className="absolute top-full right-0 mt-2 w-72 rounded-xl p-5 z-50"
+              style={{ background: '#fff', border: '1px solid #EAECF0', boxShadow: 'var(--shadow-lg)' }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-[13px] font-semibold" style={{ color: '#101828' }}>Backend setup</p>
+                <button onClick={() => setShowSetup(false)} style={{ color: '#98A2B3' }} aria-label="Close">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div
+                className="rounded-lg p-3 mb-4"
+                style={{ background: '#F9FAFB', border: '1px solid #EAECF0', fontFamily: 'var(--font-mono)', fontSize: '12px' }}
+              >
+                <p style={{ color: '#98A2B3' }}># Start the backend</p>
+                <p style={{ color: '#101828', marginTop: '4px' }}>uvicorn app.main:app --port 3001 --reload</p>
+              </div>
+              <div className="text-[12px] leading-relaxed" style={{ color: '#667085' }}>
+                Proxied at <span style={{ color: '#136AB6' }}>/api</span>.
+                <span className="flex items-center gap-1.5 mt-2" style={{ color: brainOnline ? '#039855' : '#98A2B3' }}>
+                  {brainOnline && <CheckCircle className="w-3.5 h-3.5" />} Brain MCP {brainOnline ? 'connected' : '— set BRAIN_MCP_URL in Settings'}
+                </span>
+                <span className="flex items-center gap-1.5 mt-1" style={{ color: linkedinOnline ? '#0F5795' : '#98A2B3' }}>
+                  {linkedinOnline && <CheckCircle className="w-3.5 h-3.5" />} LinkedIn MCP {linkedinOnline ? 'connected' : '— set LINKEDIN_MCP_URL in Settings'}
+                </span>
+              </div>
+              <button
+                onClick={() => { clearAuthToken(); window.location.href = '/login'; }}
+                className="flex items-center justify-center gap-2 w-full mt-4 rounded-lg"
+                style={{ height: '38px', background: '#FEF3F2', border: '1px solid #FECDCA', color: '#B42318', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                <LogOut className="w-4 h-4" /> Sign out
+              </button>
+            </motion.div>
+          )}
+        </div>
       </div>
-    </header>
+    </div>
   );
 };
 

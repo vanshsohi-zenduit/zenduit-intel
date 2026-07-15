@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
+import DOMPurify from 'dompurify';
 import Layout from './components/Layout';
 import ProspectInput from './components/ProspectInput';
 import StrategyDisplay from './components/StrategyDisplay';
@@ -8,14 +9,14 @@ import OutreachScripts, { ContactCard } from './components/OutreachScripts';
 import SavedLibrary from './components/SavedLibrary';
 import BulkUpload from './components/BulkUpload';
 import ExecutionLog from './components/ExecutionLog';
-import LiveCoach from './components/LiveCoach';
 import CampaignDashboard from './components/CampaignDashboard';
+import Leaderboard from './components/Leaderboard';
 import Settings from './components/Settings.jsx';
 import { runIntelPipeline } from './lib/intelEngine.js';
 import { fetchLibrary, saveLibrary, saveLibraryEntry } from './lib/mcpClient.js';
 import {
   Target, Users, BarChart3, ArrowRight, RefreshCw,
-  ChevronLeft, Brain, Globe, Cpu, Zap, AlertCircle
+  ChevronLeft, Brain, Globe, Cpu, Zap, AlertCircle, CheckCircle
 } from 'lucide-react';
 
 // Max prospects retained in the persisted library. Sized to hold a full bulk
@@ -58,93 +59,57 @@ const PHASE_LABELS = [
 ];
 
 const ResearchLoader = ({ phases, activeTool }) => (
-  <div className="flex flex-col items-center justify-center min-h-[520px]">
-    <div className="text-center max-w-md w-full">
-      <div className="relative w-20 h-20 mx-auto mb-8">
-        <div
-          className="absolute inset-0 rounded-full"
-          style={{
-            background: 'radial-gradient(circle, rgba(37,99,235,0.18), transparent 70%)',
-            filter: 'blur(16px)',
-            animation: 'pulse-ring 2.5s ease-in-out infinite',
-          }}
-        />
-        <div
-          className="relative w-20 h-20 rounded-full flex items-center justify-center"
-          style={{ background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.22)' }}
-        >
-          <Brain className="w-9 h-9 animate-pulse" style={{ color: '#2563eb' }} />
-        </div>
-        <div className="absolute -inset-3 rounded-full"
-          style={{ border: '1px dashed rgba(37,99,235,0.18)', animation: 'spin 10s linear infinite' }} />
-      </div>
+  <div
+    className="w-full"
+    style={{ background: '#fff', border: '1px solid #EAECF0', borderRadius: '12px', padding: '22px' }}
+  >
+    <div className="flex items-center gap-2 mb-1">
+      <Brain className="w-4 h-4 animate-pulse" style={{ color: '#136AB6' }} />
+      <span className="text-[15px] font-semibold" style={{ color: '#101828' }}>Gathering intelligence</span>
+    </div>
+    <p className="text-[13px] mb-5" style={{ color: '#667085' }}>
+      {activeTool ? `Running ${activeTool.replace(/_/g, ' ')}…` : 'This usually takes 2–3 minutes. You can switch tabs — results will be waiting.'}
+    </p>
 
-      <h3 className="text-xl font-bold mb-2" style={{ color: '#0f172a' }}>Gathering Intelligence</h3>
-      <p className="text-[13px] mb-7" style={{ color: '#64748b' }}>
-        {activeTool ? `Running ${activeTool.replace(/_/g, ' ')}…` : 'Analysing company profile…'}
-      </p>
+    <div className="flex flex-col gap-4">
+      {PHASE_LABELS.map((p) => {
+        const s        = phases[p.id] || 'pending';
+        const isActive = s === 'start' || s === 'generating';
+        const isDone   = s === 'complete';
+        const isSkip   = s === 'skip';
 
-      <div className="flex flex-col gap-2">
-        {PHASE_LABELS.map((p) => {
-          const s        = phases[p.id] || 'pending';
-          const isActive = s === 'start' || s === 'generating';
-          const isDone   = s === 'complete';
-          const isSkip   = s === 'skip';
-
-          return (
+        return (
+          <div key={p.id} className="flex items-center gap-3">
             <div
-              key={p.id}
-              className="flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200"
+              className="shrink-0 flex items-center justify-center rounded-full"
               style={{
-                background: isDone   ? 'rgba(37,99,235,0.05)'
-                           : isActive ? '#ffffff'
-                           :            '#ffffff',
-                border: `1px solid ${isDone ? 'rgba(37,99,235,0.20)' : isActive ? 'rgba(37,99,235,0.18)' : '#e2e8f0'}`,
-                boxShadow: isActive ? '0 1px 4px rgba(37,99,235,0.08)' : 'none',
+                width: '20px', height: '20px',
+                background: isDone ? '#12B76A' : isActive ? '#136AB6' : '#F2F4F7',
+                color: '#fff',
+                animation: isActive ? 'pulse 1.1s ease-in-out infinite' : 'none',
               }}
             >
-              <div
-                className="w-2 h-2 rounded-full shrink-0"
-                style={{
-                  background: isDone   ? '#16a34a'
-                             : isSkip   ? '#e2e8f0'
-                             : isActive ? '#2563eb'
-                             :            '#e2e8f0',
-                  boxShadow: isActive ? '0 0 8px rgba(37,99,235,0.6)' : isDone ? '0 0 6px rgba(22,163,74,0.4)' : 'none',
-                }}
-              />
-              <div className="flex-1 text-left">
-                <p className="text-[13px] font-medium" style={{ color: s === 'pending' || isSkip ? '#94a3b8' : '#0f172a' }}>
-                  {p.label}
-                </p>
-                <p className="text-[11px] mt-0.5" style={{ color: '#94a3b8' }}>{p.desc}</p>
-              </div>
-              {isDone   && <span className="text-[9px] font-semibold uppercase tracking-widest" style={{ color: '#16a34a' }}>Done</span>}
-              {isSkip   && <span className="text-[9px] font-semibold uppercase tracking-widest" style={{ color: '#94a3b8' }}>Skip</span>}
-              {isActive && (
-                <div className="flex gap-1 items-center">
-                  {[0, 1, 2].map(i => (
-                    <motion.div key={i}
-                      animate={{ scale: [1, 1.5, 1], opacity: [0.3, 1, 0.3] }}
-                      transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.18 }}
-                      className="w-1 h-1 rounded-full"
-                      style={{ background: '#2563eb' }}
-                    />
-                  ))}
-                </div>
-              )}
+              {isDone && <CheckCircle className="w-3 h-3" strokeWidth={3} />}
             </div>
-          );
-        })}
-      </div>
-
-      {activeTool && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-5 flex items-center justify-center gap-2">
-          <Globe className="w-3 h-3" style={{ color: 'rgba(37,99,235,0.5)' }} />
-          <span className="text-[11px]" style={{ color: '#64748b', fontFamily: 'Inconsolata, monospace' }}>{activeTool}</span>
-        </motion.div>
-      )}
+            <div className="flex-1 min-w-0">
+              <p className="text-[14px]" style={{ fontWeight: (s === 'pending' || isSkip) ? 500 : 600, color: (s === 'pending' || isSkip) ? '#98A2B3' : '#101828' }}>
+                {p.label}
+              </p>
+              <p className="text-[12px]" style={{ color: '#98A2B3' }}>{p.desc}</p>
+            </div>
+            {isDone && <span className="text-[11px] font-semibold" style={{ color: '#027A48' }}>Done</span>}
+            {isSkip && <span className="text-[11px] font-semibold" style={{ color: '#98A2B3' }}>Skipped</span>}
+          </div>
+        );
+      })}
     </div>
+
+    {activeTool && (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-5 flex items-center gap-2">
+        <Globe className="w-3 h-3" style={{ color: '#99C5E8' }} />
+        <span className="text-[11px]" style={{ color: '#667085', fontFamily: 'var(--font-mono)' }}>{activeTool}</span>
+      </motion.div>
+    )}
   </div>
 );
 
@@ -152,38 +117,19 @@ const ResearchLoader = ({ phases, activeTool }) => (
 const StatCard = ({ label, value, icon: Icon, delay }) => (
   <motion.div
     initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay }}
-    className="card relative overflow-hidden"
-    style={{ padding: '20px' }}
+    style={{ background: '#fff', border: '1px solid #EAECF0', borderRadius: '10px', padding: '16px' }}
   >
-    <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t"
-      style={{ background: 'linear-gradient(90deg, transparent, rgba(37,99,235,0.40), transparent)' }} />
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center justify-center rounded-lg"
-        style={{ width: '36px', height: '36px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.16)' }}>
-        <Icon className="w-4 h-4" style={{ color: '#2563eb' }} />
+        style={{ width: '36px', height: '36px', background: '#E7F2FA' }}>
+        <Icon className="w-4 h-4" style={{ color: '#136AB6' }} />
       </div>
-      <ArrowRight className="w-3.5 h-3.5" style={{ color: 'rgba(0,0,0,0.12)' }} />
+      <ArrowRight className="w-3.5 h-3.5" style={{ color: '#D0D5DD' }} />
     </div>
-    <p className="text-3xl font-bold" style={{ color: '#0f172a' }}>{value}</p>
-    <p className="text-[11px] font-medium uppercase tracking-wider mt-1" style={{ color: '#64748b' }}>{label}</p>
+    <p className="text-[26px] font-semibold" style={{ color: '#101828' }}>{value}</p>
+    <p className="text-[12px] font-medium mt-1" style={{ color: '#475467' }}>{label}</p>
   </motion.div>
 );
-
-// ─── Context builder ────────────────────────────────────────────────────────────
-const buildCoachingContext = (results) => {
-  if (!results) return '';
-  const intel = results.intel || {};
-  const li    = results.linkedinIntel || {};
-  return [
-    `Company: ${results.companyName || 'Unknown'}`,
-    `Industry: ${intel.industry || 'unknown'} | Fleet: ${intel.fleetSize || 'unknown'}`,
-    `Pain Points: ${(intel.painPoints || []).slice(0, 3).join(', ')}`,
-    `Best Product: ${intel.topProduct || 'ZenduONE'}`,
-    `Displacement: ${intel.displacementAngle || ''}`,
-    `Contact: ${li.contactName || intel.contactName || ''} (${li.contactTitle || intel.contactTitle || ''})`,
-    `Hook: ${(li.personalizationHooks || []).slice(0, 2).join(' | ')}`,
-  ].filter(l => !l.endsWith(': ') && !l.endsWith('()') && !l.endsWith('( )') && !l.endsWith('()')).join('\n');
-};
 
 // ─── App ────────────────────────────────────────────────────────────────────────
 function App() {
@@ -195,7 +141,6 @@ function App() {
   const [activeTool,       setActiveTool]       = useState(null);
   const [execLog,          setExecLog]          = useState([]);
   const [streamingBriefing, setStreamingBriefing] = useState('');
-  const [coachingContext,  setCoachingContext]  = useState('');
   const execLogStartRef    = useRef(null);
 
   const [library, setLibrary] = useState(() => {
@@ -286,7 +231,6 @@ function App() {
         result.linkedinIntel = seedLinkedinIntel;
       }
       setResults(result);
-      setCoachingContext(buildCoachingContext(result));
       if (!result.partial) saveToLibrary(result, assignedRep || null);
     } catch (err) {
       setError(err.message || 'Pipeline failed. Ensure backend is running.');
@@ -301,7 +245,7 @@ function App() {
 
   const handleBulkResults = (completedResults) => {
     // Bulk returns flat extracted fields — nest them under `intel` so bulk entries
-    // integrate with library stats, the intelligence view, and coaching context.
+    // integrate with library stats and the intelligence view.
     const newEntries = completedResults
       .filter(r => r.companyName)
       .map(r => ({
@@ -351,24 +295,22 @@ function App() {
   // ── Intelligence tab ──────────────────────────────────────────────────────────
   const renderIntelligence = () => {
     if (isGenerating) return (
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
         <ResearchLoader phases={phases} activeTool={activeTool} />
         {streamingBriefing && (
           <motion.div
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-            className="card overflow-hidden"
-            style={{ padding: '24px' }}
+            style={{ background: '#fff', border: '1px solid #EAECF0', borderRadius: '12px', padding: '22px' }}
           >
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#2563eb' }} />
-              <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: '#2563eb' }}>
-                Generating Briefing…
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#136AB6', animation: 'pulse 1.1s ease-in-out infinite' }} />
+              <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: '#136AB6' }}>
+                Generating briefing…
               </span>
             </div>
             <div
-              className="prose prose-sm max-w-none text-[13px] leading-relaxed"
-              style={{ color: '#374151' }}
-              dangerouslySetInnerHTML={{ __html: streamingBriefing }}
+              className="markdown-content max-w-none"
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(streamingBriefing) }}
             />
           </motion.div>
         )}
@@ -378,26 +320,26 @@ function App() {
     if (error) return (
       <div className="flex items-center justify-center min-h-[500px]">
         <div
-          className="text-center max-w-md px-6 py-10 rounded-2xl"
-          style={{ background: 'rgba(220,38,38,0.04)', border: '1px solid rgba(220,38,38,0.16)' }}
+          className="text-center max-w-md px-6 py-10 rounded-xl"
+          style={{ background: '#FEF3F2', border: '1px solid #FECDCA' }}
         >
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
-            style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.18)' }}>
-            <AlertCircle className="w-7 h-7" style={{ color: '#dc2626' }} />
+            style={{ background: '#FEE4E2' }}>
+            <AlertCircle className="w-7 h-7" style={{ color: '#D92D20' }} />
           </div>
-          <h3 className="text-[17px] font-bold mb-2" style={{ color: '#dc2626' }}>Research Failed</h3>
-          <p className="text-[13px] mb-5 leading-relaxed" style={{ color: '#64748b' }}>{error}</p>
+          <h3 className="text-[17px] font-bold mb-2" style={{ color: '#B42318' }}>Research failed</h3>
+          <p className="text-[13px] mb-5 leading-relaxed" style={{ color: '#667085' }}>{error}</p>
           <div className="rounded-lg p-4 text-[11px] space-y-1.5 mb-5 text-left"
-            style={{ background: 'rgba(0,0,0,0.03)', border: '1px solid #e2e8f0', fontFamily: 'Inconsolata, monospace' }}>
-            <p style={{ color: '#94a3b8' }}># Start the backend:</p>
-            <p style={{ color: '#374151' }}>uvicorn app.main:app --port 3001 --reload</p>
+            style={{ background: '#fff', border: '1px solid #EAECF0', fontFamily: 'var(--font-mono)' }}>
+            <p style={{ color: '#98A2B3' }}># Start the backend:</p>
+            <p style={{ color: '#344054' }}>uvicorn app.main:app --port 3001 --reload</p>
           </div>
           <button
             onClick={handleReset}
-            className="px-5 py-2.5 rounded-xl text-[12px] font-bold transition-colors"
-            style={{ background: 'rgba(0,0,0,0.04)', border: '1px solid #e2e8f0', color: '#374151', cursor: 'pointer' }}
+            className="px-5 py-2.5 rounded-lg text-[13px] font-semibold transition-colors"
+            style={{ background: '#fff', border: '1px solid #D0D5DD', color: '#344054', cursor: 'pointer' }}
           >
-            Try Again
+            Try again
           </button>
         </div>
       </div>
@@ -409,36 +351,36 @@ function App() {
           <motion.div
             initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
             className="flex items-start gap-3 px-4 py-3 rounded-xl"
-            style={{ background: 'rgba(234,179,8,0.06)', border: '1px solid rgba(234,179,8,0.25)' }}
+            style={{ background: '#FFFAEB', border: '1px solid #FEDF89' }}
           >
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#b45309' }} />
-            <p className="text-[12px] leading-relaxed" style={{ color: '#92400e' }}>
-              The pipeline stream ended before completing — showing partial results. Sequences and scripts may be missing. <button onClick={() => handleGenerate({ companyName: results.companyName, websiteUrl: '' })} className="underline font-medium" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#92400e' }}>Rerun to get full output.</button>
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#B54708' }} />
+            <p className="text-[12px] leading-relaxed" style={{ color: '#B54708' }}>
+              The pipeline stream ended before completing — showing partial results. Sequences and scripts may be missing. <button onClick={() => handleGenerate({ companyName: results.companyName, websiteUrl: '' })} className="underline font-medium" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B54708' }}>Rerun to get full output.</button>
             </p>
           </motion.div>
         )}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <button
             onClick={handleReset}
-            className="flex items-center gap-1.5 text-[12px] font-medium transition-colors hover:opacity-70"
-            style={{ color: '#64748b' }}
+            className="flex items-center gap-1.5 text-[13px] font-medium transition-colors hover:opacity-70"
+            style={{ color: '#667085' }}
           >
-            <ChevronLeft className="w-4 h-4" /> New Research
+            <ChevronLeft className="w-4 h-4" /> New research
           </button>
           <div className="flex items-center gap-2 flex-wrap">
             <span
-              className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-full"
-              style={{ background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.20)', color: '#2563eb' }}
+              className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-full"
+              style={{ background: '#E7F2FA', color: '#0F5795' }}
             >
-              <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: '#2563eb' }} />
+              <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: '#12B76A' }} />
               {results.companyName}
             </span>
             <button
               onClick={() => handleGenerate({ companyName: results.companyName, websiteUrl: results.websiteUrl })}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[12px] font-medium transition-colors"
-              style={{ background: 'rgba(0,0,0,0.04)', border: '1px solid #e2e8f0', color: '#64748b', cursor: 'pointer' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.07)'; e.currentTarget.style.color = '#0f172a'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; e.currentTarget.style.color = '#64748b'; }}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[13px] font-semibold transition-colors"
+              style={{ background: '#fff', border: '1px solid #D0D5DD', color: '#344054', cursor: 'pointer' }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#fff'; }}
             >
               <RefreshCw className="w-3 h-3" /> Rerun
             </button>
@@ -456,15 +398,16 @@ function App() {
               <motion.div
                 key={i}
                 initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                className="card flex items-center gap-3 px-4 py-3.5"
+                className="flex items-center gap-3 px-4 py-3.5"
+                style={{ background: '#fff', border: '1px solid #EAECF0', borderRadius: '10px' }}
               >
                 <div className="flex items-center justify-center rounded-lg shrink-0"
-                  style={{ width: '32px', height: '32px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.16)' }}>
-                  <s.icon className="w-4 h-4" style={{ color: '#2563eb' }} />
+                  style={{ width: '32px', height: '32px', background: '#E7F2FA' }}>
+                  <s.icon className="w-4 h-4" style={{ color: '#136AB6' }} />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] uppercase tracking-wider font-medium" style={{ color: '#64748b' }}>{s.label}</p>
-                  <p className="text-[13px] font-medium truncate" style={{ color: '#0f172a' }}>{s.value}</p>
+                  <p className="text-[10px] uppercase tracking-wider font-medium" style={{ color: '#667085' }}>{s.label}</p>
+                  <p className="text-[13px] font-medium truncate" style={{ color: '#101828' }}>{s.value}</p>
                 </div>
               </motion.div>
             ))}
@@ -478,19 +421,22 @@ function App() {
             {(results.briefing || results.objections) ? (
               <StrategyDisplay briefing={results.briefing} objections={results.objections} />
             ) : (
-              <div className="card flex flex-col items-center text-center px-8 py-12" style={{ borderTop: '2px solid #2563eb' }}>
+              <div
+                className="flex flex-col items-center text-center px-8 py-12"
+                style={{ background: '#fff', border: '1px solid #EAECF0', borderRadius: '12px' }}
+              >
                 <div className="flex items-center justify-center rounded-xl mb-4"
-                  style={{ width: '48px', height: '48px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.18)' }}>
-                  <Brain className="w-6 h-6" style={{ color: '#2563eb' }} />
+                  style={{ width: '48px', height: '48px', background: '#E7F2FA' }}>
+                  <Brain className="w-6 h-6" style={{ color: '#136AB6' }} />
                 </div>
-                <h3 className="text-[15px] font-semibold mb-1.5" style={{ color: '#0f172a' }}>Prospect data extracted</h3>
-                <p className="text-[13px] leading-relaxed mb-5 max-w-sm" style={{ color: '#64748b' }}>
+                <h3 className="text-[15px] font-semibold mb-1.5" style={{ color: '#101828' }}>Prospect data extracted</h3>
+                <p className="text-[13px] leading-relaxed mb-5 max-w-sm" style={{ color: '#667085' }}>
                   Company facts and contact details above are pulled from your data. Run full research to generate the executive briefing, objection playbook, 14-day sequence, and outreach scripts.
                 </p>
                 <button
                   onClick={() => handleGenerate({ companyName: results.companyName, websiteUrl: results.websiteUrl })}
-                  className="inline-flex items-center gap-2 rounded-lg text-[13px] font-medium"
-                  style={{ padding: '10px 20px', background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer' }}
+                  className="inline-flex items-center gap-2 rounded-lg text-[14px] font-semibold"
+                  style={{ padding: '10px 20px', background: '#136AB6', color: '#fff', border: '1px solid #136AB6', cursor: 'pointer' }}
                 >
                   <Zap className="w-3.5 h-3.5" /> Run full research
                 </button>
@@ -502,10 +448,10 @@ function App() {
               <div className="lg:sticky lg:top-4">
                 <div className="flex items-center gap-2.5 mb-4">
                   <div className="flex items-center justify-center rounded-lg"
-                    style={{ width: '32px', height: '32px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.16)' }}>
-                    <Target className="w-4 h-4" style={{ color: '#2563eb' }} />
+                    style={{ width: '32px', height: '32px', background: '#E7F2FA' }}>
+                    <Target className="w-4 h-4" style={{ color: '#136AB6' }} />
                   </div>
-                  <h3 className="text-[14px] font-semibold" style={{ color: '#0f172a' }}>14-Day Sequence</h3>
+                  <h3 className="text-[14px] font-semibold" style={{ color: '#101828' }}>14-Day sequence</h3>
                 </div>
                 <div className="lg:max-h-[calc(100vh-200px)] lg:overflow-y-auto pr-1"
                   style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(0,0,0,0.12) transparent' }}>
@@ -520,55 +466,41 @@ function App() {
 
     // Landing state
     return (
-      <div className="flex flex-col lg:flex-row gap-5 min-h-[600px]">
-        <div className="w-full lg:w-[300px] xl:w-[320px] shrink-0">
-          <ProspectInput onGenerate={handleGenerate} />
-        </div>
+      <div className="flex flex-col lg:flex-row gap-6 items-start min-h-[600px]">
+        <ProspectInput onGenerate={handleGenerate} />
 
-        <div className="flex-1 min-w-0 flex flex-col gap-4">
+        <div className="flex-1 min-w-0 w-full flex flex-col gap-4">
           <div className="grid grid-cols-3 gap-3">
             <StatCard
-              label="Avg Fit Score"
+              label="Avg fit score"
               value={library.length ? (library.reduce((s, e) => s + (e.intel?.score || 5), 0) / library.length).toFixed(1) : '—'}
               icon={BarChart3} delay={0.06}
             />
-            <StatCard label="Saved Prospects" value={library.length}                                           icon={Target} delay={0.10} />
-            <StatCard label="High-Fit (8+)"   value={library.filter(e => (e.intel?.score || 0) >= 8).length}  icon={Users}  delay={0.14} />
+            <StatCard label="Saved prospects" value={library.length}                                          icon={Target} delay={0.10} />
+            <StatCard label="High-fit (8+)"    value={library.filter(e => (e.intel?.score || 0) >= 8).length} icon={Users}  delay={0.14} />
           </div>
 
           <motion.div
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.20 }}
-            className="flex-1 flex flex-col items-center justify-center relative overflow-hidden rounded-2xl"
-            style={{
-              minHeight: '260px',
-              background: '#ffffff',
-              border: '1px dashed #e2e8f0',
-            }}
+            className="flex-1 flex flex-col items-center justify-center text-center rounded-xl"
+            style={{ minHeight: '300px', background: '#fff', border: '1px dashed #D0D5DD' }}
           >
-            <div
-              className="absolute inset-0 pointer-events-none"
-              style={{
-                backgroundImage: 'radial-gradient(circle at 1.5px 1.5px, rgba(0,0,0,0.04) 1px, transparent 0)',
-                backgroundSize: '24px 24px',
-              }}
-            />
-
-            <div className="relative z-10 text-center max-w-[360px] px-8">
+            <div className="max-w-[380px] px-8 py-16">
               <div className="flex items-center justify-center rounded-xl mx-auto mb-5"
-                style={{ width: '56px', height: '56px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.18)' }}>
-                <Cpu className="w-6 h-6" style={{ color: '#2563eb' }} />
+                style={{ width: '56px', height: '56px', background: '#E7F2FA' }}>
+                <Cpu className="w-6 h-6" style={{ color: '#136AB6' }} />
               </div>
 
-              <h3 className="text-[18px] font-bold mb-2" style={{ color: '#0f172a' }}>Intelligence Engine Ready</h3>
-              <p className="text-[13px] leading-relaxed mb-6" style={{ color: '#64748b' }}>
-                Enter a company name or website to trigger the research pipeline — real-time web search, LinkedIn signals, and Zenduit product matching.
+              <h3 className="text-[18px] font-bold mb-2" style={{ color: '#101828' }}>Intelligence engine ready</h3>
+              <p className="text-[13px] leading-relaxed mb-6" style={{ color: '#667085' }}>
+                Enter a company name and run the pipeline to generate a briefing, objections, scripts, and a 14-day sequence.
               </p>
 
               {library.length > 0 ? (
                 <button
                   onClick={() => setActiveTab('library')}
-                  className="inline-flex items-center gap-2 rounded-lg text-[13px] font-medium"
-                  style={{ padding: '10px 20px', background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer' }}
+                  className="inline-flex items-center gap-2 rounded-lg text-[14px] font-semibold"
+                  style={{ padding: '10px 20px', background: '#136AB6', color: '#fff', border: '1px solid #136AB6', cursor: 'pointer' }}
                 >
                   <Users className="w-3.5 h-3.5" />
                   View {library.length} saved prospect{library.length !== 1 ? 's' : ''}
@@ -577,7 +509,7 @@ function App() {
                 <div className="flex flex-wrap items-center justify-center gap-2">
                   {['Fleet Visibility', 'Driver Safety', 'Fuel Savings', 'ELD Compliance'].map(tag => (
                     <span key={tag} className="text-[11px] px-3 py-1 rounded-full"
-                      style={{ background: 'rgba(37,99,235,0.07)', border: '1px solid rgba(37,99,235,0.14)', color: '#2563eb' }}>
+                      style={{ background: '#E7F2FA', color: '#0F5795' }}>
                       {tag}
                     </span>
                   ))}
@@ -595,14 +527,16 @@ function App() {
       case 'intelligence': return renderIntelligence();
       case 'outreach':     return <OutreachScripts scripts={results?.scripts} variants={results?.variants} companyName={results?.companyName} intel={results?.intel} linkedInContactUrl={results?.linkedInContactUrl} />;
       case 'campaign':     return <CampaignDashboard />;
+      case 'leaderboard':  return <Leaderboard />;
       case 'sequence':
         return (
-          <div className="w-full max-w-3xl">
+          <div className="w-full max-w-3xl mx-auto">
             <div className="mb-5">
-              <h1 className="text-xl font-bold" style={{ color: '#0f172a' }}>14-Day Sequence</h1>
-              <p className="text-[13px] mt-1" style={{ color: '#64748b' }}>
-                Outreach timeline for{' '}
-                <span className="font-medium" style={{ color: '#2563eb' }}>{results?.companyName}</span>
+              <h1 className="text-[16px] font-semibold" style={{ color: '#101828' }}>14-day sequence</h1>
+              <p className="text-[13px] mt-1" style={{ color: '#667085' }}>
+                {results?.sequence?.length
+                  ? <>Calls, emails, and LinkedIn touches for <span className="font-medium" style={{ color: '#136AB6' }}>{results.companyName}</span>, timed from today.</>
+                  : 'Run the Intelligence pipeline for a lead first — the day-by-day sequence is generated from that research.'}
               </p>
             </div>
             <SequenceTimeline sequence={results?.sequence} />
@@ -610,24 +544,17 @@ function App() {
         );
       case 'log':
         return (
-          <div className="w-full max-w-3xl">
+          <div className="w-full max-w-3xl mx-auto">
             <div className="mb-5">
-              <h1 className="text-xl font-bold" style={{ color: '#0f172a' }}>Execution Log</h1>
-              <p className="text-[13px] mt-1" style={{ color: '#64748b' }}>
+              <h1 className="text-[16px] font-semibold" style={{ color: '#101828' }}>Execution log</h1>
+              <p className="text-[13px] mt-1" style={{ color: '#667085' }}>
                 {execLog.length > 0
                   ? `${execLog.length} events recorded${results?.companyName ? ` for ${results.companyName}` : ''}`
-                  : 'Run Intel to see live pipeline events'}
+                  : 'Every research/generation step the pipeline runs will appear here, most recent first.'}
               </p>
             </div>
             <ExecutionLog execLog={execLog} runStartTs={execLogStartRef.current} />
           </div>
-        );
-      case 'coach':
-        return (
-          <LiveCoach
-            prospectContext={coachingContext}
-            companyName={results?.companyName || ''}
-          />
         );
       case 'library':
         return (
@@ -647,7 +574,6 @@ function App() {
                 variants:           entry.variants || [],
               };
               setResults(loaded);
-              setCoachingContext(buildCoachingContext(loaded));
               setActiveTab('intelligence');
             }}
             onDelete={handleDelete}
@@ -664,7 +590,6 @@ function App() {
       activeTab={activeTab}
       onTabChange={setActiveTab}
       activeIntel={results?.companyName}
-      resultsAvailable={!!results}
       libraryCount={library.length}
     >
       {renderContent()}

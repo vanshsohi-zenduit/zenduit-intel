@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, Check, Mail, Phone, MessageCircle, ChevronDown, Zap, Search, User, Briefcase, Truck, Send, X, FlaskConical } from 'lucide-react';
+import { Copy, Check, Mail, Phone, MessageCircle, ChevronDown, Zap, Search, User, Briefcase, Truck, Send, X, FlaskConical, Lock } from 'lucide-react';
 import LinkedInIcon from './LinkedInIcon.jsx';
 import { saveOutcome } from '../lib/mcpClient.js';
 
@@ -23,7 +23,7 @@ const CopyBtn = ({ text, size = 'sm' }) => {
   const sz = size === 'sm' ? '22px' : '28px';
   return (
     <button onClick={copy} className="flex items-center justify-center rounded shrink-0"
-      style={{ width: sz, height: sz, background: copied ? 'rgba(16,185,129,0.10)' : 'rgba(0,0,0,0.04)', border: `1px solid ${copied ? 'rgba(16,185,129,0.22)' : '#e2e8f0'}`, color: copied ? '#10B981' : '#64748b' }}>
+      style={{ width: sz, height: sz, background: copied ? '#ECFDF3' : '#F9FAFB', border: `1px solid ${copied ? '#A6F4C5' : '#EAECF0'}`, color: copied ? '#027A48' : '#667085' }}>
       {copied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
     </button>
   );
@@ -42,44 +42,44 @@ export const ContactCard = ({ intel }) => {
   if (!name && !email && !phone && !platform && !assets.length) return null;
 
   return (
-    <div className="card mb-5 overflow-hidden">
-      <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid #e2e8f0', background: 'rgba(0,0,0,0.01)' }}>
-        <div className="flex items-center justify-center rounded-lg shrink-0"
-          style={{ width: '32px', height: '32px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.18)' }}>
-          <User className="w-4 h-4" style={{ color: '#2563eb' }} />
+    <div className="mb-5 overflow-hidden" style={{ background: '#fff', border: '1px solid #EAECF0', borderRadius: '12px' }}>
+      <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid #EAECF0', background: '#F9FAFB' }}>
+        <div className="flex items-center justify-center rounded-full shrink-0 text-[13px] font-semibold"
+          style={{ width: '38px', height: '38px', background: '#E7F2FA', color: '#0F5795' }}>
+          {(name || 'DM').split(' ').map(w => w[0]).join('').slice(0, 2)}
         </div>
         <div>
-          <p className="text-[13px] font-semibold" style={{ color: '#0f172a' }}>{name || 'Decision Maker'}</p>
-          {title && <p className="text-[12px]" style={{ color: '#64748b' }}>{title}</p>}
+          <p className="text-[13px] font-semibold" style={{ color: '#101828' }}>{name || 'Decision maker'}</p>
+          {title && <p className="text-[12px]" style={{ color: '#667085' }}>{title}</p>}
         </div>
       </div>
       <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="flex flex-col gap-3">
           {email && (
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#64748b' }}>Email</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#667085' }}>Email</p>
               <div className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 shrink-0" style={{ color: '#2563eb' }} />
-                <p className="text-[12px] truncate" style={{ color: '#374151' }}>{email}</p>
+                <Mail className="w-3.5 h-3.5 shrink-0" style={{ color: '#136AB6' }} />
+                <p className="text-[12px] truncate" style={{ color: '#344054' }}>{email}</p>
                 <CopyBtn text={email} />
               </div>
             </div>
           )}
           {phone && (
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#64748b' }}>Phone</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#667085' }}>Phone</p>
               <div className="flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 shrink-0" style={{ color: '#d97706' }} />
-                <p className="text-[12px]" style={{ color: '#374151' }}>{phone}</p>
+                <Phone className="w-3.5 h-3.5 shrink-0" style={{ color: '#027A48' }} />
+                <p className="text-[12px]" style={{ color: '#344054' }}>{phone}</p>
                 <CopyBtn text={phone} />
               </div>
             </div>
           )}
           {platform && (
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#64748b' }}>Current Platform</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#667085' }}>Current platform</p>
               <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px]"
-                style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#374151' }}>
+                style={{ background: '#F9FAFB', border: '1px solid #EAECF0', color: '#344054' }}>
                 <Briefcase className="w-3 h-3" />
                 {platform}
               </span>
@@ -87,25 +87,25 @@ export const ContactCard = ({ intel }) => {
           )}
           {fleet && (
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#64748b' }}>Fleet Size</p>
-              <p className="text-[12px]" style={{ color: '#374151' }}>{fleet}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#667085' }}>Fleet size</p>
+              <p className="text-[12px]" style={{ color: '#344054' }}>{fleet}</p>
             </div>
           )}
         </div>
         <div className="flex flex-col gap-3">
           {roleSub && (
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#64748b' }}>Role Snapshot</p>
-              <p className="text-[12px] leading-relaxed" style={{ color: '#374151' }}>{roleSub}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-1" style={{ color: '#667085' }}>Role snapshot</p>
+              <p className="text-[12px] leading-relaxed" style={{ color: '#344054' }}>{roleSub}</p>
             </div>
           )}
           {assets.length > 0 && (
             <div>
-              <p className="text-[10px] font-medium uppercase tracking-wider mb-2" style={{ color: '#64748b' }}>Trackable Assets</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider mb-2" style={{ color: '#667085' }}>Trackable assets</p>
               <div className="flex flex-wrap gap-1.5">
                 {assets.map((a, i) => (
                   <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px]"
-                    style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)', color: '#059669' }}>
+                    style={{ background: '#ECFDF3', border: '1px solid #A6F4C5', color: '#027A48' }}>
                     <Truck className="w-2.5 h-2.5" />{a}
                   </span>
                 ))}
@@ -125,7 +125,7 @@ const SendLinkedInBtn = ({ profileUrl, message }) => {
     <button disabled title="No LinkedIn profile URL found for this contact"
       className="flex items-center gap-1.5 rounded-lg"
       style={{ height: '36px', padding: '0 14px', fontSize: '12px', opacity: 0.35, cursor: 'not-allowed',
-               background: 'rgba(10,102,194,0.06)', color: '#0A66C2', border: '1px solid rgba(10,102,194,0.16)' }}>
+               background: '#E7F2FA', color: '#0F5795', border: '1px solid #C8E0F3' }}>
       <LinkedInIcon className="w-3.5 h-3.5" /> Send
     </button>
   );
@@ -149,10 +149,10 @@ const SendLinkedInBtn = ({ profileUrl, message }) => {
   };
 
   const styles = {
-    idle:    { background: 'rgba(10,102,194,0.08)',  color: '#0A66C2', border: '1px solid rgba(10,102,194,0.20)' },
-    sending: { background: 'rgba(10,102,194,0.08)',  color: '#0A66C2', border: '1px solid rgba(10,102,194,0.20)', opacity: 0.7 },
-    sent:    { background: 'rgba(16,185,129,0.10)',  color: '#059669', border: '1px solid rgba(16,185,129,0.22)' },
-    error:   { background: 'rgba(220,38,38,0.08)',   color: '#dc2626', border: '1px solid rgba(220,38,38,0.20)' },
+    idle:    { background: '#E7F2FA', color: '#0F5795', border: '1px solid #C8E0F3' },
+    sending: { background: '#E7F2FA', color: '#0F5795', border: '1px solid #C8E0F3', opacity: 0.7 },
+    sent:    { background: '#ECFDF3', color: '#027A48', border: '1px solid #A6F4C5' },
+    error:   { background: '#FEF3F2', color: '#B42318', border: '1px solid #FECDCA' },
   };
 
   return (
@@ -181,26 +181,26 @@ const ScriptCard = ({ script, index, linkedInContactUrl }) => {
   };
 
   return (
-    <div className="card overflow-hidden">
+    <div className="overflow-hidden" style={{ background: '#fff', border: '1px solid #EAECF0', borderRadius: '12px' }}>
       <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-3 text-left px-5 py-4">
         <div className="flex items-center justify-center rounded-lg shrink-0"
-          style={{ width: '36px', height: '36px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.16)' }}>
-          <Icon className="w-4 h-4" style={{ color: '#2563eb' }} />
+          style={{ width: '36px', height: '36px', background: '#E7F2FA' }}>
+          <Icon className="w-4 h-4" style={{ color: '#136AB6' }} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-[13px] font-medium" style={{ color: '#0f172a' }}>{script.type}</p>
+            <p className="text-[13px] font-semibold" style={{ color: '#101828' }}>{script.type}</p>
             {script.framework && (
               <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                style={{ background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0' }}>
+                style={{ background: '#F9FAFB', color: '#667085', border: '1px solid #EAECF0' }}>
                 {script.framework}
               </span>
             )}
           </div>
-          {script.subject && <p className="text-[11px] truncate mt-0.5" style={{ color: '#64748b' }}>{script.subject}</p>}
+          {script.subject && <p className="text-[11px] truncate mt-0.5" style={{ color: '#667085' }}>{script.subject}</p>}
         </div>
         <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.18 }}>
-          <ChevronDown className="w-4 h-4" style={{ color: '#94a3b8' }} />
+          <ChevronDown className="w-4 h-4" style={{ color: '#98A2B3' }} />
         </motion.div>
       </button>
 
@@ -208,33 +208,33 @@ const ScriptCard = ({ script, index, linkedInContactUrl }) => {
         {open && (
           <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }}
             transition={{ duration: 0.2, ease: 'easeInOut' }} className="overflow-hidden">
-            <div style={{ padding: '0 24px 24px', borderTop: '1px solid #e2e8f0' }}>
+            <div style={{ padding: '0 24px 24px', borderTop: '1px solid #EAECF0' }}>
               {script.openingSignal && !['unknown', 'signal used', 'n/a', 'none'].includes(script.openingSignal.toLowerCase().trim()) && (
                 <div className="flex items-start gap-2 mt-4 mb-3 px-3 py-2.5 rounded-lg"
-                  style={{ background: 'rgba(37,99,235,0.04)', border: '1px solid rgba(37,99,235,0.12)' }}>
-                  <Search className="w-3 h-3 mt-0.5 shrink-0" style={{ color: '#2563eb' }} />
-                  <p className="text-[12px] leading-relaxed" style={{ color: '#374151' }}>
-                    <span className="font-medium" style={{ color: '#2563eb' }}>Signal: </span>{script.openingSignal}
+                  style={{ background: '#E7F2FA', border: '1px solid #C8E0F3' }}>
+                  <Search className="w-3 h-3 mt-0.5 shrink-0" style={{ color: '#136AB6' }} />
+                  <p className="text-[12px] leading-relaxed" style={{ color: '#344054' }}>
+                    <span className="font-medium" style={{ color: '#0F5795' }}>Signal: </span>{script.openingSignal}
                   </p>
                 </div>
               )}
               {script.subject && (
                 <div className="mb-3 mt-4 px-3 py-2 rounded-lg"
-                  style={{ background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '13px' }}>
-                  <span className="font-medium" style={{ color: '#64748b' }}>Subject: </span>
-                  <span style={{ color: '#374151' }}>{script.subject}</span>
+                  style={{ background: '#F9FAFB', border: '1px solid #EAECF0', fontSize: '13px' }}>
+                  <span className="font-medium" style={{ color: '#667085' }}>Subject: </span>
+                  <span style={{ color: '#344054' }}>{script.subject}</span>
                 </div>
               )}
               {!script.openingSignal && !script.subject && <div className="mt-4" />}
 
-              <p className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color: '#374151' }}>{script.body}</p>
+              <p className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color: '#344054' }}>{script.body}</p>
 
               {script.tip && (
                 <div className="flex items-start gap-2 mt-4 px-3 py-2.5 rounded-lg"
-                  style={{ background: 'rgba(217,119,6,0.05)', border: '1px solid rgba(217,119,6,0.14)' }}>
-                  <Zap className="w-3 h-3 mt-0.5 shrink-0" style={{ color: '#d97706' }} />
-                  <p className="text-[12px] leading-relaxed" style={{ color: '#374151' }}>
-                    <span className="font-medium" style={{ color: '#d97706' }}>Before sending: </span>{script.tip}
+                  style={{ background: '#FFFAEB', border: '1px solid #FEDF89' }}>
+                  <Zap className="w-3 h-3 mt-0.5 shrink-0" style={{ color: '#B54708' }} />
+                  <p className="text-[12px] leading-relaxed" style={{ color: '#344054' }}>
+                    <span className="font-medium" style={{ color: '#B54708' }}>Before sending: </span>{script.tip}
                   </p>
                 </div>
               )}
@@ -247,8 +247,8 @@ const ScriptCard = ({ script, index, linkedInContactUrl }) => {
                   style={{
                     height: '36px', padding: '0 14px', fontSize: '12px',
                     ...(copied
-                      ? { background: 'rgba(16,185,129,0.10)', color: '#059669', border: '1px solid rgba(16,185,129,0.22)' }
-                      : { background: 'rgba(0,0,0,0.04)', color: '#64748b', border: '1px solid #e2e8f0' }),
+                      ? { background: '#ECFDF3', color: '#027A48', border: '1px solid #A6F4C5' }
+                      : { background: '#fff', color: '#344054', border: '1px solid #D0D5DD' }),
                   }}>
                   {copied ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
                 </button>
@@ -262,9 +262,9 @@ const ScriptCard = ({ script, index, linkedInContactUrl }) => {
 };
 
 const VARIANT_COLORS = {
-  A: { bg: 'rgba(37,99,235,0.08)',  bd: 'rgba(37,99,235,0.20)',  fg: '#2563eb' },
-  B: { bg: 'rgba(16,185,129,0.08)', bd: 'rgba(16,185,129,0.20)', fg: '#059669' },
-  C: { bg: 'rgba(217,119,6,0.08)',  bd: 'rgba(217,119,6,0.20)',  fg: '#d97706' },
+  A: { bg: '#E7F2FA', bd: '#C8E0F3', fg: '#0F5795' },
+  B: { bg: '#ECFDF3', bd: '#A6F4C5', fg: '#027A48' },
+  C: { bg: '#FFFAEB', bd: '#FEDF89', fg: '#B54708' },
 };
 
 const VariantCard = ({ variant, companyName }) => {
@@ -289,20 +289,20 @@ const VariantCard = ({ variant, companyName }) => {
   };
 
   return (
-    <div className="card overflow-hidden">
-      <div className="flex items-center gap-3 px-5 py-3.5" style={{ borderBottom: '1px solid #e2e8f0' }}>
+    <div className="overflow-hidden" style={{ background: '#fff', border: '1px solid #EAECF0', borderRadius: '12px' }}>
+      <div className="flex items-center gap-3 px-5 py-3.5" style={{ borderBottom: '1px solid #EAECF0' }}>
         <div className="flex items-center justify-center rounded-lg shrink-0 text-[13px] font-bold"
           style={{ width: '30px', height: '30px', background: c.bg, border: `1px solid ${c.bd}`, color: c.fg }}>
           {variant.variant}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[12px] font-medium truncate" style={{ color: '#0f172a' }}>{variant.subject || 'Opener'}</p>
-          {variant.angle && <p className="text-[11px] truncate" style={{ color: '#64748b' }}>{variant.angle}</p>}
+          <p className="text-[12px] font-medium truncate" style={{ color: '#101828' }}>{variant.subject || 'Opener'}</p>
+          {variant.angle && <p className="text-[11px] truncate" style={{ color: '#667085' }}>{variant.angle}</p>}
         </div>
         <CopyBtn text={variant.subject ? `Subject: ${variant.subject}\n\n${variant.body}` : variant.body} />
       </div>
       <div className="px-5 py-4">
-        <p className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color: '#374151' }}>{variant.body}</p>
+        <p className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color: '#344054' }}>{variant.body}</p>
         <div className="mt-4 flex items-center justify-end">
           <button onClick={logSent} disabled={!companyName || logState === 'logging'}
             className="flex items-center gap-1.5 rounded-lg transition-colors"
@@ -311,9 +311,9 @@ const VariantCard = ({ variant, companyName }) => {
               height: '32px', padding: '0 12px', fontSize: '11.5px', fontWeight: 500,
               cursor: companyName ? 'pointer' : 'not-allowed',
               ...(logState === 'logged'
-                ? { background: 'rgba(16,185,129,0.10)', color: '#059669', border: '1px solid rgba(16,185,129,0.22)' }
+                ? { background: '#ECFDF3', color: '#027A48', border: '1px solid #A6F4C5' }
                 : logState === 'error'
-                ? { background: 'rgba(220,38,38,0.08)', color: '#dc2626', border: '1px solid rgba(220,38,38,0.20)' }
+                ? { background: '#FEF3F2', color: '#B42318', border: '1px solid #FECDCA' }
                 : { background: c.bg, color: c.fg, border: `1px solid ${c.bd}`, opacity: companyName ? 1 : 0.4 }),
             }}>
             {logState === 'logged' ? <><Check className="w-3.5 h-3.5" /> Logged</>
@@ -332,9 +332,9 @@ const VariantsSection = ({ variants, companyName }) => {
   return (
     <div className="mb-6">
       <div className="flex items-center gap-2 mb-3">
-        <FlaskConical className="w-4 h-4" style={{ color: '#2563eb' }} />
-        <h2 className="text-[14px] font-semibold" style={{ color: '#0f172a' }}>A/B Opener Variants</h2>
-        <span className="text-[11px]" style={{ color: '#64748b' }}>· rotate &amp; track which converts</span>
+        <FlaskConical className="w-4 h-4" style={{ color: '#136AB6' }} />
+        <h2 className="text-[14px] font-semibold" style={{ color: '#101828' }}>A/B opener variants</h2>
+        <span className="text-[12px]" style={{ color: '#667085' }}>· rotate &amp; track which converts</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {variants.map((v, i) => <VariantCard key={i} variant={v} companyName={companyName} />)}
@@ -345,29 +345,30 @@ const VariantsSection = ({ variants, companyName }) => {
 
 const OutreachScripts = ({ scripts, variants, companyName, intel, linkedInContactUrl }) => {
   if (!scripts?.length && !variants?.length) return (
-    <div className="flex items-center justify-center h-80">
-      <div className="text-center">
-        <div className="flex items-center justify-center rounded-xl mx-auto mb-4"
-          style={{ width: '48px', height: '48px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.16)' }}>
-          <Mail className="w-5 h-5" style={{ color: '#2563eb' }} />
-        </div>
-        <p className="text-[15px] font-semibold mb-1" style={{ color: '#0f172a' }}>No scripts yet</p>
-        <p className="text-[13px]" style={{ color: '#64748b' }}>Research a prospect first to generate personalized outreach scripts.</p>
+    <div className="flex flex-col items-center justify-center text-center gap-2.5"
+      style={{ padding: '100px 24px', background: '#fff', border: '1px dashed #D0D5DD', borderRadius: '12px' }}>
+      <div className="flex items-center justify-center rounded-xl mb-1"
+        style={{ width: '48px', height: '48px', background: '#F2F4F7' }}>
+        <Lock className="w-5 h-5" style={{ color: '#98A2B3' }} />
       </div>
+      <p className="text-[15px] font-semibold" style={{ color: '#475467' }}>Scripts are locked</p>
+      <p className="text-[13px] max-w-xs" style={{ color: '#667085' }}>
+        Run the Intelligence pipeline for a lead first — scripts are generated from that research.
+      </p>
     </div>
   );
 
   return (
-    <div className="w-full max-w-3xl">
+    <div className="w-full max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold" style={{ color: '#0f172a' }}>Outreach Scripts</h1>
-          <p className="text-[13px] mt-1" style={{ color: '#64748b' }}>
-            Personalized for <span className="font-medium" style={{ color: '#2563eb' }}>{companyName}</span>
+          <h1 className="text-[16px] font-semibold" style={{ color: '#101828' }}>Outreach scripts</h1>
+          <p className="text-[13px] mt-1" style={{ color: '#667085' }}>
+            Personalized from the research briefing for <span className="font-medium" style={{ color: '#136AB6' }}>{companyName}</span>.
           </p>
         </div>
-        <span className="text-[11px] font-medium px-2.5 py-1 rounded-full"
-          style={{ background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.18)', color: '#2563eb' }}>
+        <span className="text-[12px] font-semibold px-2.5 py-1 rounded-full"
+          style={{ background: '#E7F2FA', color: '#0F5795' }}>
           {scripts?.length || 0} scripts
         </span>
       </div>
@@ -376,7 +377,7 @@ const OutreachScripts = ({ scripts, variants, companyName, intel, linkedInContac
       <div className="flex flex-col gap-2">
         {(scripts || []).map((s, i) => <ScriptCard key={i} script={s} index={i} linkedInContactUrl={linkedInContactUrl} />)}
       </div>
-      <p className="mt-5 text-[12px] leading-relaxed" style={{ color: '#64748b' }}>
+      <p className="mt-5 text-[12px] leading-relaxed" style={{ color: '#667085' }}>
         Scripts are grounded in real-time web signals and Zenduit product intelligence. Review before sending.
       </p>
     </div>

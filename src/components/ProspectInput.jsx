@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Globe, Search, Trash2, Target, User } from 'lucide-react';
+import { Globe, Zap, Trash2, User } from 'lucide-react';
 import LinkedInIcon from './LinkedInIcon.jsx';
 import { fetchReps } from '../lib/mcpClient.js';
-
-const GOALS = ['Fleet Visibility', 'Safety & Compliance', 'Downtime Reduction', 'Data Centralization'];
 
 const ProspectInput = ({ onGenerate }) => {
   const [linkedinUrl, setLinkedinUrl] = useState('');
@@ -25,85 +23,89 @@ const ProspectInput = ({ onGenerate }) => {
     : reps;
 
   const fieldStyle = {
-    height: '44px',
+    height: '40px',
     background: '#ffffff',
-    border: '1px solid #e2e8f0',
+    border: '1px solid #D0D5DD',
     borderRadius: '8px',
     fontSize: '14px',
-    color: '#0f172a',
+    color: '#101828',
     outline: 'none',
     width: '100%',
+    boxShadow: '0 1px 2px rgba(16,24,40,.05)',
     transition: 'border-color 0.15s, box-shadow 0.15s',
-    fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+    fontFamily: 'var(--font-sans)',
   };
 
   const onFocus = e => {
-    e.target.style.borderColor = 'rgba(37,99,235,0.60)';
-    e.target.style.boxShadow   = '0 0 0 3px rgba(37,99,235,0.10)';
+    e.target.style.borderColor = '#136AB6';
+    e.target.style.boxShadow   = '0 0 0 4px rgba(19,106,182,0.16)';
   };
   const onBlur = e => {
-    e.target.style.borderColor = '#e2e8f0';
-    e.target.style.boxShadow   = 'none';
+    e.target.style.borderColor = '#D0D5DD';
+    e.target.style.boxShadow   = '0 1px 2px rgba(16,24,40,.05)';
   };
 
   const handleGenerate = () => {
     onGenerate({ linkedinUrl, websiteUrl, companyName, assignedRep: selectedRep });
   };
 
-  return (
-    <div className="flex flex-col gap-4">
+  const Label = ({ children, optional }) => (
+    <label className="text-[13px] font-medium block mb-1.5" style={{ color: '#344054' }}>
+      {children}
+      {optional && <span className="ml-1 font-normal" style={{ color: '#98A2B3' }}>(optional)</span>}
+    </label>
+  );
 
-      <div className="card p-6 flex flex-col gap-5">
-        <div className="flex items-center gap-3">
-          <div
-            className="flex items-center justify-center rounded-lg shrink-0"
-            style={{ width: '36px', height: '36px', background: 'rgba(37,99,235,0.10)', border: '1px solid rgba(37,99,235,0.20)' }}
-          >
-            <Target className="w-4 h-4" style={{ color: '#2563eb' }} />
-          </div>
-          <div>
-            <p className="text-[14px] font-semibold" style={{ color: '#0f172a' }}>Target Prospect</p>
-            <p className="text-[12px]" style={{ color: '#64748b' }}>Enter details to trigger research pipeline</p>
+  return (
+    <div
+      className="w-full lg:w-[360px] shrink-0"
+      style={{ background: '#fff', border: '1px solid #EAECF0', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 2px rgba(16,24,40,.06)' }}
+    >
+      <div className="text-[16px] font-semibold" style={{ color: '#101828', marginBottom: '2px' }}>New research</div>
+      <div className="text-[13px]" style={{ color: '#667085', marginBottom: '18px' }}>Run the AI pipeline on a prospect company.</div>
+
+      <div className="flex flex-col gap-3.5">
+        <div>
+          <Label>Company name <span style={{ color: '#D92D20' }}>*</span></Label>
+          <input
+            type="text" placeholder="e.g. Meridian Freight Group"
+            value={companyName} onChange={e => setCompanyName(e.target.value)}
+            onFocus={onFocus} onBlur={onBlur}
+            style={{ ...fieldStyle, padding: '0 12px' }}
+          />
+        </div>
+
+        <div>
+          <Label optional>Website URL</Label>
+          <div className="relative">
+            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: '#98A2B3' }} />
+            <input
+              type="text" placeholder="www.example.com"
+              value={websiteUrl} onChange={e => setWebsiteUrl(e.target.value)}
+              onFocus={onFocus} onBlur={onBlur}
+              style={{ ...fieldStyle, paddingLeft: '36px', paddingRight: '12px' }}
+            />
           </div>
         </div>
 
-        <div className="h-px" style={{ background: '#e2e8f0' }} />
-
-        {[
-          { label: 'Company Name',     placeholder: 'Werner Enterprises',   value: companyName, onChange: setCompanyName, icon: null,        optional: false },
-          { label: 'Company Website',  placeholder: 'https://company.com',  value: websiteUrl,  onChange: setWebsiteUrl,  icon: Globe,       optional: true  },
-          { label: 'LinkedIn Profile', placeholder: 'linkedin.com/in/name', value: linkedinUrl, onChange: setLinkedinUrl, icon: LinkedInIcon, optional: true  },
-        ].map(f => (
-          <div key={f.label} className="flex flex-col gap-1.5">
-            <label className="text-[11px] font-medium" style={{ color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              {f.label}
-              {f.optional && <span className="ml-1.5 normal-case font-normal" style={{ color: '#94a3b8' }}>— optional</span>}
-            </label>
-            <div className="relative">
-              {f.icon && (
-                <f.icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: '#94a3b8' }} />
-              )}
-              <input
-                type="text"
-                placeholder={f.placeholder}
-                value={f.value}
-                onChange={e => f.onChange(e.target.value)}
-                onFocus={onFocus}
-                onBlur={onBlur}
-                style={{ ...fieldStyle, paddingLeft: f.icon ? '36px' : '12px', paddingRight: '12px' }}
-              />
-            </div>
-          </div>
-        ))}
-
-        {/* Rep selector */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-[11px] font-medium" style={{ color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            Assign to Rep
-            <span className="ml-1.5 normal-case font-normal" style={{ color: '#94a3b8' }}>— optional</span>
-          </label>
+        <div>
+          <Label optional>LinkedIn URL</Label>
           <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: '#94a3b8' }} />
+            <LinkedInIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: '#98A2B3' }} />
+            <input
+              type="text" placeholder="linkedin.com/company/…"
+              value={linkedinUrl} onChange={e => setLinkedinUrl(e.target.value)}
+              onFocus={onFocus} onBlur={onBlur}
+              style={{ ...fieldStyle, paddingLeft: '36px', paddingRight: '12px' }}
+            />
+          </div>
+        </div>
+
+        {/* Rep selector — real searchable dropdown */}
+        <div>
+          <Label optional>Assigned rep</Label>
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: '#98A2B3' }} />
             <input
               type="text"
               placeholder={selectedRep ? selectedRep.name : 'Search rep name…'}
@@ -116,14 +118,14 @@ const ProspectInput = ({ onGenerate }) => {
             {selectedRep && (
               <button
                 onClick={() => { setSelectedRep(null); setRepQuery(''); }}
-                style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '16px' }}
+                style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#98A2B3', fontSize: '16px' }}
               >×</button>
             )}
             {showRepList && filteredReps.length > 0 && !selectedRep && (
               <div style={{
-                position: 'absolute', top: '48px', left: 0, right: 0, zIndex: 50,
-                background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px',
-                boxShadow: '0 4px 16px rgba(0,0,0,.12)', maxHeight: '200px', overflowY: 'auto',
+                position: 'absolute', top: '44px', left: 0, right: 0, zIndex: 50,
+                background: '#fff', border: '1px solid #EAECF0', borderRadius: '8px',
+                boxShadow: 'var(--shadow-lg)', maxHeight: '200px', overflowY: 'auto',
               }}>
                 {filteredReps.slice(0, 30).map(r => (
                   <button
@@ -131,9 +133,9 @@ const ProspectInput = ({ onGenerate }) => {
                     onMouseDown={() => { setSelectedRep({ name: r.name, clickupMemberId: r.id }); setRepQuery(''); setShowRepList(false); }}
                     style={{
                       display: 'block', width: '100%', textAlign: 'left',
-                      padding: '9px 14px', fontSize: '13px', color: '#0f172a',
+                      padding: '9px 14px', fontSize: '13px', color: '#101828',
                       background: 'none', border: 'none', cursor: 'pointer',
-                      borderBottom: '1px solid #f1f5f9',
+                      borderBottom: '1px solid #F2F4F7',
                     }}
                   >
                     {r.name}
@@ -148,48 +150,30 @@ const ProspectInput = ({ onGenerate }) => {
           <button
             onClick={handleGenerate}
             disabled={!canGenerate}
-            className="flex-1 flex items-center justify-center gap-2 rounded-lg text-[14px] font-medium transition-opacity active:scale-[0.99]"
+            className="flex-1 flex items-center justify-center gap-2 rounded-lg text-[15px] font-semibold transition-colors active:scale-[0.99]"
             style={{
               height: '44px',
-              background: canGenerate ? '#2563eb' : 'rgba(0,0,0,0.05)',
-              color:      canGenerate ? '#fff'    : '#94a3b8',
-              border:     canGenerate ? 'none'    : '1px solid #e2e8f0',
-              cursor:     canGenerate ? 'pointer' : 'not-allowed',
-              opacity:    canGenerate ? 1         : 0.5,
+              background: canGenerate ? '#136AB6' : '#98A2B3',
+              color: '#fff',
+              border: `1px solid ${canGenerate ? '#136AB6' : '#98A2B3'}`,
+              cursor: canGenerate ? 'pointer' : 'not-allowed',
             }}
           >
-            <Search className="w-4 h-4" strokeWidth={2} />
-            Generate Strategy
+            <Zap className="w-4 h-4" strokeWidth={2} />
+            Run research
           </button>
           <button
             onClick={() => { setLinkedinUrl(''); setWebsiteUrl(''); setCompanyName(''); setSelectedRep(null); setRepQuery(''); }}
             title="Clear fields"
             style={{
               width: '44px', height: '44px', flexShrink: 0,
-              background: 'rgba(0,0,0,0.04)',
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px', color: '#94a3b8', cursor: 'pointer',
+              background: '#fff', border: '1px solid #D0D5DD',
+              borderRadius: '8px', color: '#667085', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >
             <Trash2 className="w-4 h-4" />
           </button>
-        </div>
-      </div>
-
-      <div className="card p-5">
-        <p className="text-[11px] font-medium uppercase tracking-wider mb-3" style={{ color: '#94a3b8' }}>Targeting Goals</p>
-        <div className="grid grid-cols-2 gap-2">
-          {GOALS.map(g => (
-            <div
-              key={g}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg"
-              style={{ background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.14)' }}
-            >
-              <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#2563eb' }} />
-              <span className="text-[12px]" style={{ color: '#64748b' }}>{g}</span>
-            </div>
-          ))}
         </div>
       </div>
     </div>

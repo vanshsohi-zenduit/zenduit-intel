@@ -12,7 +12,6 @@ const FIELD_LABELS = {
   GOOGLE_API_KEY: 'Google API Key',
   GEMINI_RESEARCH_MODEL: 'Research Model',
   GEMINI_GENERATION_MODEL: 'Generation Model',
-  GEMINI_DEEP_RESEARCH_MODEL: 'Deep Research Model (leave blank to use standard loop)',
   BRAIN_MCP_URL: 'Brain MCP URL',
   BRAIN_MCP_API_KEY: 'Brain MCP API Key',
   LINKEDIN_MCP_URL: 'LinkedIn MCP URL',
@@ -26,11 +25,10 @@ const FIELD_LABELS = {
   ZOHO_WEBHOOK_SECRET: 'Webhook Secret',
   SLACK_WEBHOOK_URL: 'Slack Webhook URL',
   PUBLIC_APP_URL: 'Public App URL',
-  API_SECRET: 'API Bearer Secret',
 };
 
 const PLAINTEXT_KEYS = new Set([
-  'GEMINI_RESEARCH_MODEL', 'GEMINI_GENERATION_MODEL', 'GEMINI_DEEP_RESEARCH_MODEL',
+  'GEMINI_RESEARCH_MODEL', 'GEMINI_GENERATION_MODEL',
   'BRAIN_MCP_URL', 'LINKEDIN_MCP_URL', 'PUBLIC_APP_URL',
   'CLICKUP_LIST_ID', 'CLICKUP_OVERDUE_HOURS', 'CLICKUP_POLL_INTERVAL_SEC',
   'GMAIL_USER', 'MANAGER_EMAIL',
@@ -44,12 +42,12 @@ const SettingField = ({ fieldKey, info, localValue, onChange, showSecret, onTogg
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.07em' }}>
+        <label style={{ fontSize: '12px', fontWeight: 600, color: '#667085', textTransform: 'uppercase', letterSpacing: '.07em' }}>
           {label}
         </label>
         {configured
-          ? <CheckCircle style={{ width: '13px', height: '13px', color: '#10b981', flexShrink: 0 }} />
-          : <AlertCircle  style={{ width: '13px', height: '13px', color: '#d97706', flexShrink: 0 }} />
+          ? <CheckCircle style={{ width: '13px', height: '13px', color: '#12B76A', flexShrink: 0 }} />
+          : <AlertCircle  style={{ width: '13px', height: '13px', color: '#B54708', flexShrink: 0 }} />
         }
       </div>
       <div style={{ position: 'relative' }}>
@@ -60,16 +58,16 @@ const SettingField = ({ fieldKey, info, localValue, onChange, showSecret, onTogg
           onChange={e => onChange(fieldKey, e.target.value)}
           style={{
             width: '100%', height: '38px', paddingLeft: '12px', paddingRight: isPlain ? '12px' : '38px',
-            background: '#fff', border: '1px solid #e2e8f0', borderRadius: '7px',
-            fontSize: '13px', color: '#0f172a', outline: 'none', boxSizing: 'border-box',
+            background: '#fff', border: '1px solid #EAECF0', borderRadius: '7px',
+            fontSize: '13px', color: '#101828', outline: 'none', boxSizing: 'border-box',
           }}
-          onFocus={e => { e.target.style.borderColor = 'rgba(37,99,235,0.6)'; e.target.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.1)'; }}
-          onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.boxShadow = 'none'; }}
+          onFocus={e => { e.target.style.borderColor = '#136AB6'; e.target.style.boxShadow = '0 0 0 3px rgba(19,106,182,0.16)'; }}
+          onBlur={e => { e.target.style.borderColor = '#EAECF0'; e.target.style.boxShadow = 'none'; }}
         />
         {!isPlain && (
           <button
             onClick={() => onToggleSecret(fieldKey)}
-            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0, display: 'flex' }}
+            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#98A2B3', padding: 0, display: 'flex' }}
           >
             {showSecret ? <EyeOff style={{ width: '15px', height: '15px' }} /> : <Eye style={{ width: '15px', height: '15px' }} />}
           </button>
@@ -128,7 +126,7 @@ const Settings = () => {
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px' }}>
-        <div style={{ width: '28px', height: '28px', border: '3px solid #e2e8f0', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <div style={{ width: '28px', height: '28px', border: '3px solid #EAECF0', borderTopColor: '#136AB6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -137,9 +135,9 @@ const Settings = () => {
   return (
     <div style={{ maxWidth: '680px' }}>
       <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>Settings</h1>
-        <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>
-          All credentials are stored in <code style={{ fontSize: '12px', background: '#f1f5f9', padding: '1px 6px', borderRadius: '4px' }}>credentials.json</code> on the server and never sent to the browser.
+        <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#101828', margin: '0 0 4px' }}>Settings</h1>
+        <p style={{ fontSize: '13px', color: '#667085', margin: 0 }}>
+          All credentials are stored in <code style={{ fontSize: '12px', background: '#F2F4F7', padding: '1px 6px', borderRadius: '4px' }}>credentials.json</code> on the server and never sent to the browser.
         </p>
       </div>
 
@@ -152,20 +150,20 @@ const Settings = () => {
           const help = GROUP_HELP[group];
 
           return (
-            <div key={group} style={{ background: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+            <div key={group} style={{ background: '#fff', borderRadius: '10px', border: '1px solid #EAECF0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
               {/* Group header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #F2F4F7', background: '#F9FAFB' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isOk ? '#10b981' : configured > 0 ? '#f59e0b' : '#e2e8f0' }} />
-                  <span style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>{group}</span>
-                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>{configured}/{keys.length} configured</span>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isOk ? '#12B76A' : configured > 0 ? '#F79009' : '#EAECF0' }} />
+                  <span style={{ fontSize: '14px', fontWeight: 700, color: '#101828' }}>{group}</span>
+                  <span style={{ fontSize: '11px', color: '#98A2B3' }}>{configured}/{keys.length} configured</span>
                 </div>
                 <button
                   onClick={() => handleSave(group, keys)}
                   disabled={isSaving}
                   style={{
                     height: '32px', padding: '0 16px', borderRadius: '6px', border: 'none',
-                    background: isSaved ? '#10b981' : '#2563eb',
+                    background: isSaved ? '#12B76A' : '#136AB6',
                     color: '#fff', fontSize: '12px', fontWeight: 600, cursor: isSaving ? 'wait' : 'pointer',
                     opacity: isSaving ? 0.6 : 1, transition: 'background 0.2s',
                   }}
@@ -177,7 +175,7 @@ const Settings = () => {
               {/* Fields */}
               <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 {help && (
-                  <div style={{ padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '12px', color: '#1d4ed8', lineHeight: 1.6 }}>
+                  <div style={{ padding: '10px 14px', background: '#E7F2FA', border: '1px solid #C8E0F3', borderRadius: '6px', fontSize: '12px', color: '#0F5795', lineHeight: 1.6 }}>
                     {help}
                   </div>
                 )}

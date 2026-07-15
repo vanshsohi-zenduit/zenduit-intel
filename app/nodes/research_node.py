@@ -313,77 +313,21 @@ def _blank_vague_hq(intel: dict) -> dict:
     return intel
 
 
-# ── Deep Research (Google Interactions API) ────────────────────────────────────
+# ── Structured intel schema (shared by grounded + subagent reconciler) ─────────
 
-async def _deep_research_gemini(state: IntelState) -> dict:
-    import asyncio as _asyncio
-    import google.genai as genai
-
-    company = state.get("company_name") or "unknown"
-    website = state.get("website_url") or ""
-    seed = state.get("seed_intel") or {}
-
-    site_clause = f"Their website is {website}." if website and website not in ("unknown", "") else ""
-    query = (
-        f"Research {company} thoroughly for B2B sales intelligence. {site_clause}\n"
-        f"Find: headquarters city and address, industry, fleet size, employee count, "
-        f"recent news (funding/expansion/hiring), current telematics/GPS vendor, "
-        f"key decision maker (name, title, contact info), top pain points for fleet operations, "
-        f"competitors they may be using (Samsara, Geotab, Motive, Verizon Connect, Lytx), "
-        f"hiring signals, and any recent events relevant to a fleet telematics sales conversation."
-    )
-
-    api_key = get_config("GOOGLE_API_KEY")
-    client = genai.Client(api_key=api_key)
-    model = get_config("GEMINI_DEEP_RESEARCH_MODEL", "deep-research-preview-04-2026")
-
-    loop = _asyncio.get_event_loop()
-    interaction = await loop.run_in_executor(
-        None,
-        lambda: client.interactions.create(input=query, agent=model, background=True),
-    )
-
-    max_polls = 60
-    for _ in range(max_polls):
-        await _asyncio.sleep(10)
-        interaction = await loop.run_in_executor(
-            None,
-            lambda: client.interactions.get(interaction.id),
-        )
-        if getattr(interaction, "status", None) in ("completed", "failed"):
-            break
-
-    if getattr(interaction, "status", None) != "completed":
-        raise RuntimeError(f"Deep research did not complete (status={getattr(interaction,'status','?')})")
-
-    report_text = ""
-    for attr in ("result", "output", "text"):
-        val = getattr(interaction, attr, None)
-        if val:
-            report_text = str(val)
-            break
-
-    parser_llm = ChatGoogleGenerativeAI(
-        model=get_config("GEMINI_RESEARCH_MODEL", "gemini-2.0-flash"),
-        google_api_key=api_key,
-    )
-    parse_prompt = f"""Extract structured sales intelligence from this research report about {company}.
-
-RESEARCH REPORT:
-{report_text[:15000]}
-
-Return ONLY valid JSON matching this exact schema (no markdown fences):
-{{
+_INTEL_SCHEMA = """{
   "companyName": string,
   "industry": string,
-  "hq": "City, State, Country — city-level required, NEVER just a region or country name. Empty string if city unknown.",
+  "hq": "City, State/Province, Country — city-level required, NEVER just a region or country. Empty string if city unknown.",
   "employeeCount": string,
   "fleetSize": string,
   "summary": string,
-  "recentNews": [{{"headline": string, "relevance": string}}],
+  "recentNews": [{"headline": string, "relevance": string}],
   "painPoints": [string],
   "competitors": [string],
-  "productMatches": [{{"product": string, "reason": string, "value": string}}],
+  "productMatches": [{"product": string, "reason": string, "value": string}],
+  "prospectContext": string,
+  "focus": string,
   "topProduct": string,
   "topPainPoint": string,
   "recentEvent": string,
@@ -400,34 +344,265 @@ Return ONLY valid JSON matching this exact schema (no markdown fences):
   "contactRoleSummary": string,
   "currentFleetPlatform": string,
   "trackableAssets": [string]
-}}"""
+}"""
 
-    parse_resp = await parser_llm.ainvoke([HumanMessage(content=parse_prompt)])
-    raw = _content_text(parse_resp.content)
-    match = re.search(r"\{[\s\S]*\}", raw)
+
+# ── Grounded Gemini call helper (shared by all grounded paths) ─────────────────
+
+async def _grounded_generate(
+    prompt: str, *, grounded: bool = True, model: str | None = None
+) -> tuple[str, list[str], list[str]]:
+    """Run one Gemini `generate_content` call, optionally with Google Search grounding.
+
+    Returns (raw_text, search_queries, source_urls). Grounding metadata gives us the
+    real queries Google ran and the source URLs it cited — used for the execution log."""
+    import asyncio as _asyncio
+    import google.genai as genai
+    from google.genai import types as genai_types
+
+    api_key = get_config("GOOGLE_API_KEY")
+    client = genai.Client(api_key=api_key)
+
+    tools = (
+        [genai_types.Tool(google_search=genai_types.GoogleSearch())] if grounded else None
+    )
+    gen_config = genai_types.GenerateContentConfig(tools=tools, temperature=0.1)
+
+    loop = _asyncio.get_event_loop()
+    response = await loop.run_in_executor(
+        None,
+        lambda: client.models.generate_content(
+            model=model or RESEARCH_MODEL, contents=prompt, config=gen_config
+        ),
+    )
+
+    searches: list[str] = []
+    sources: list[str] = []
+    try:
+        gm = response.candidates[0].grounding_metadata
+        if gm:
+            searches = list(gm.web_search_queries or [])
+            sources = [c.web.uri for c in (gm.grounding_chunks or []) if c.web and c.web.uri]
+    except (AttributeError, IndexError):
+        pass
+
+    return (response.text or ""), searches, sources
+
+
+# ── Simulated Deep Research — multi-subagent grounded pipeline ─────────────────
+#
+# Replaces the old Google Interactions "deep research" model (3-10 min/lead) with a
+# faster fan-out of grounded Gemini calls:
+#   1. Planner   — one call, no grounding: break the company into 4 targeted queries
+#   2. Extractors — 4 calls IN PARALLEL, each grounded with Google Search
+#   3. Reconciler — one call, no grounding: fold all findings into the app schema
+
+_PLANNER_PROMPT = """You are a Fleet Operations & Logistics Intelligence Analyst. Break down a \
+lead research request for "{company}" into exactly 4 highly targeted web search strings designed to \
+uncover fleet size, logistics operations, field staff, current tracking platforms, and decision-makers.
+
+Respond with ONLY a JSON array of 4 strings. No markdown, no prose.
+
+Generate queries targeting:
+1. "{company}" fleet size, number of trucks/vehicles/vans, DOT/FMCSA registration, trackable logistics assets.
+2. "{company}" job postings, driver requirements, field operations, delivery services, equipment types.
+3. "{company}" fleet manager, director of logistics, safety director, COO, VP operations, LinkedIn, contact info.
+4. "{company}" telematics, GPS tracking, Geotab, Samsara, Verizon Connect, Motive, logistics software.
+"""
+
+_EXTRACTOR_PROMPT = """You are a Fleet Telematics Sales Engineer researching "{company}". Use Google \
+Search for this query and extract hard, verifiable data points about their logistics, field-service \
+operations, asset management, and personnel:
+
+QUERY: {query}
+
+Capture explicitly:
+- Operational pain signals (driver shortages, high fuel costs, ELD/compliance issues, safety violations, delivery delays).
+- Fleet size / equipment counts (trucks, vans, trailers, heavy machinery, field-service techs).
+- Current software, route optimization, or GPS/telematics platforms they use.
+- Names, titles, emails, phone numbers of operations leaders, fleet managers, or executives.
+
+Report your findings as clear bullet points. If the search returns nothing useful, say so briefly."""
+
+_RECONCILER_PROMPT = """You are a Lead Generation Data Architect for Zenduit, a B2B fleet telematics \
+platform. Reconcile the raw intelligence gathered on "{company}" into one structured record. Resolve \
+contradictions in favor of the most specific, recent, verifiable data.
+
+ZENDUIT CONTEXT:
+{zenduit}
+{known_block}
+COMPUTE THESE FIELDS CAREFULLY:
+- fleetSize: specific vehicle/truck/van count if found; else a logical estimate from employeeCount + industry (e.g. "Est. 50-100 vans").
+- currentFleetPlatform: name the competitor if they use one (Samsara, Geotab, Verizon Connect, Motive, Lytx); else "Unknown/Legacy GPS".
+- trackableAssets: what Zenduit could track (e.g. long-haul trucks, delivery vans, refrigerated trailers, construction equipment).
+- signals -> put recent triggers in "recentNews"/"recentEvent"/"hiringSignals"/"fundingOrExpansion" (safety violations, rapid scaling, new facilities, fuel complaints).
+- displacementAngle: the exact hook to displace their current setup (e.g. "Displace Samsara via superior cold-chain temp monitoring").
+- decisionMakerHint: how to approach the identified contact based on their role and priorities.
+- hq: "City, State/Province, Country". NEVER a bare region/country. Empty string if the city is unknown.
+- score: 0-100 fit for Zenduit fleet telematics.
+Never output "Unknown" for a name/field if the raw data contains any usable value.
+
+Respond with ONLY a valid JSON object matching this exact schema. No markdown fences, no trailing commas:
+{schema}
+
+RAW INTELLIGENCE GATHERED:
+{raw}"""
+
+
+async def _plan_queries(company: str) -> list[str]:
+    """Subagent 1 — the Fleet Intelligence Planner. Returns 4 targeted search queries."""
+    try:
+        raw, _, _ = await _grounded_generate(
+            _PLANNER_PROMPT.format(company=company), grounded=False
+        )
+        match = re.search(r"\[[\s\S]*\]", raw)
+        if match:
+            queries = [str(q).strip() for q in json.loads(match.group()) if str(q).strip()]
+            if queries:
+                return queries[:4]
+    except Exception as exc:
+        log.warning("Query planner failed (%s), using default queries", exc)
+
+    # Fallback — mirror the planner's four intents with static templates
+    return [
+        f'"{company}" fleet size number of trucks vehicles vans DOT FMCSA',
+        f'"{company}" job postings drivers field operations delivery equipment',
+        f'"{company}" fleet manager director of logistics VP operations COO contact',
+        f'"{company}" telematics GPS Geotab Samsara Verizon Connect Motive software',
+    ]
+
+
+async def _extract_facts(company: str, query: str) -> tuple[str, str, list[str], list[str]]:
+    """Subagent 2 — the Telematics Fact-Extractor. One grounded search per query."""
+    raw, searches, sources = await _grounded_generate(
+        _EXTRACTOR_PROMPT.format(company=company, query=query), grounded=True
+    )
+    return query, raw, searches, sources
+
+
+async def _reconcile(company: str, seed: dict, raw_blocks: str) -> dict:
+    """Subagent 3 — the Lead Data Reconciler. Folds raw findings into the app schema."""
+    known = {
+        k: v for k, v in (seed or {}).items()
+        if not _is_empty(v) and k not in ("score", "reason", "summary")
+    }
+    known_block = ""
+    if known:
+        known_block = (
+            "\nKNOWN FACTS (authoritative — from the user's CRM/spreadsheet). Do NOT contradict "
+            "these; use them and enrich the gaps:\n" + json.dumps(known, indent=2) + "\n"
+        )
+
+    prompt = _RECONCILER_PROMPT.format(
+        company=company,
+        zenduit=ZENDUIT_BRIEF,
+        known_block=known_block,
+        schema=_INTEL_SCHEMA,
+        raw=raw_blocks[:20000],
+    )
+    raw, _, _ = await _grounded_generate(prompt, grounded=False)
+
     intel: dict = {}
+    match = re.search(r"\{[\s\S]*\}", raw)
     if match:
         try:
             intel = json.loads(match.group())
         except json.JSONDecodeError:
             pass
     if not intel:
-        intel = {"companyName": company, "summary": report_text[:500]}
+        intel = {"companyName": company, "summary": raw[:500]}
+    return intel
 
+
+async def _deep_research_subagents(state: IntelState, config: RunnableConfig) -> dict:
+    """Orchestrate planner -> parallel extractors -> reconciler with SSE observability."""
+    import asyncio as _asyncio
+
+    company = state.get("company_name") or "unknown"
+    seed = state.get("seed_intel") or {}
+
+    await adispatch_custom_event(
+        "phase",
+        {"phase": 1, "label": "Website Research (Deep)", "status": "start"},
+        config=config,
+    )
+
+    # Stage 1 — plan
+    queries = await _plan_queries(company)
+
+    # Stage 2 — fan out grounded extractors in parallel; tolerate partial failure
+    results = await _asyncio.gather(
+        *[_extract_facts(company, q) for q in queries], return_exceptions=True
+    )
+
+    raw_blocks: list[str] = []
+    all_searches: list[str] = []
+    all_sources: list[str] = []
+    for res in results:
+        if isinstance(res, Exception):
+            log.warning("Fact extractor failed: %s", res)
+            continue
+        query, raw, searches, sources = res
+        raw_blocks.append(f"### {query}\n{raw}".strip())
+        all_searches.append(query)
+        all_searches.extend(searches or [])
+        all_sources.extend(sources)
+
+        await adispatch_custom_event(
+            "tool", {"name": "web_search", "input": {"query": query}}, config=config
+        )
+        await adispatch_custom_event(
+            "tool_result",
+            {"name": "web_search", "kind": "search", "query": query,
+             "count": len(sources), "items": []},
+            config=config,
+        )
+
+    # Stage 3 — reconcile into the app schema
+    intel = await _reconcile(company, seed, "\n\n".join(raw_blocks))
+
+    if not intel.get("companyName"):
+        intel["companyName"] = company
     intel = _blank_vague_hq(intel)
     if seed:
         intel = _merge_intel(seed, intel)
-    return {"website_intel": intel}
 
+    searches = list(dict.fromkeys(all_searches))
+    sources = sorted(set(all_sources))
+    log.info("Deep (subagent) research: companyName=%s queries=%d sources=%d",
+             intel.get("companyName"), len(queries), len(sources))
 
-def _content_text(content) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return " ".join(
-            (c.get("text", "") if isinstance(c, dict) else str(c)) for c in content
+    seed_fields = {k for k in seed if not _is_empty(seed.get(k))} if seed else set()
+    field_provenance = []
+    for k, v in intel.items():
+        if _is_empty(v):
+            continue
+        src = (
+            "sheet" if (k in seed_fields and k in _CSV_AUTHORITATIVE)
+            else "sheet+research" if k in seed_fields
+            else "research"
         )
-    return str(content) if content else ""
+        field_provenance.append({"field": k, "source": src})
+
+    await adispatch_custom_event(
+        "research_summary",
+        {
+            "searches": searches,
+            "sources": sources,
+            "fieldsPopulated": [k for k, v in intel.items() if not _is_empty(v)],
+            "fieldProvenance": field_provenance,
+            "seedFields": sorted(seed_fields),
+        },
+        config=config,
+    )
+
+    await adispatch_custom_event(
+        "phase",
+        {"phase": 1, "label": "Website Research (Deep)", "status": "complete", "data": intel},
+        config=config,
+    )
+
+    return {"website_intel": intel, "errors": []}
 
 
 # ── DDG agentic loop (original research_node body) ────────────────────────────
@@ -593,50 +768,14 @@ async def _ddg_research_loop(state: IntelState, config: RunnableConfig) -> dict:
 
 async def _grounded_research(state: IntelState, config: RunnableConfig) -> dict:
     """Research via Google Search Grounding — works reliably from cloud servers."""
-    import asyncio as _asyncio
-    import google.genai as genai
-    from google.genai import types as genai_types
-
     await adispatch_custom_event(
         "phase",
         {"phase": 1, "label": "Website Research", "status": "start"},
         config=config,
     )
 
-    api_key = get_config("GOOGLE_API_KEY")
-    client = genai.Client(api_key=api_key)
-
-    grounding_tool = genai_types.Tool(google_search=genai_types.GoogleSearch())
-    gen_config = genai_types.GenerateContentConfig(
-        tools=[grounding_tool],
-        temperature=0.1,
-    )
-
     prompt = RESEARCH_SYSTEM_GROUNDED + "\n\n" + _build_research_prompt(state)
-
-    loop = _asyncio.get_event_loop()
-    response = await loop.run_in_executor(
-        None,
-        lambda: client.models.generate_content(
-            model=RESEARCH_MODEL,
-            contents=prompt,
-            config=gen_config,
-        ),
-    )
-
-    # Extract grounding metadata for sources and search queries
-    searches: list[str] = []
-    sources: list[str] = []
-    try:
-        gm = response.candidates[0].grounding_metadata
-        if gm:
-            searches = list(gm.web_search_queries or [])
-            sources = [
-                c.web.uri for c in (gm.grounding_chunks or [])
-                if c.web and c.web.uri
-            ]
-    except (AttributeError, IndexError):
-        pass
+    raw, searches, sources = await _grounded_generate(prompt, grounded=True)
 
     # Emit search events so the execution log shows what was searched
     for query in searches:
@@ -648,8 +787,6 @@ async def _grounded_research(state: IntelState, config: RunnableConfig) -> dict:
             {"name": "web_search", "kind": "search", "query": query, "count": 0, "items": []},
             config=config,
         )
-
-    raw = response.text or ""
 
     intel: dict = {}
     try:
@@ -710,26 +847,17 @@ async def _grounded_research(state: IntelState, config: RunnableConfig) -> dict:
 
 # ── Public node — dispatcher ───────────────────────────────────────────────────
 
+def _deep_research_enabled() -> bool:
+    return get_config("DEEP_RESEARCH_MODE", "").strip().lower() in ("1", "true", "on", "yes")
+
+
 async def research_node(state: IntelState, config: RunnableConfig) -> dict:
-    deep_research_model = get_config("GEMINI_DEEP_RESEARCH_MODEL", "")
-    if deep_research_model:
+    if _deep_research_enabled():
         try:
-            log.info("Using Deep Research model: %s", deep_research_model)
-            await adispatch_custom_event(
-                "phase",
-                {"phase": 1, "label": "Website Research (Deep)", "status": "start"},
-                config=config,
-            )
-            result = await _deep_research_gemini(state)
-            await adispatch_custom_event(
-                "phase",
-                {"phase": 1, "label": "Website Research (Deep)", "status": "complete",
-                 "data": result.get("website_intel", {})},
-                config=config,
-            )
-            return {**result, "errors": []}
+            log.info("Using simulated deep research (multi-subagent grounded pipeline)")
+            return await _deep_research_subagents(state, config)
         except Exception as e:
-            log.warning("Deep research failed (%s), falling back", e)
+            log.warning("Deep research failed (%s), falling back to grounded", e)
 
     try:
         return await _grounded_research(state, config)

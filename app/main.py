@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import re
-import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -40,6 +39,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from sqlalchemy import select
+
 from app.graph import build_graph
 from app.library import read_library, write_library, append_library_entry, get_library_entry
 from app.notify import notify_booking
@@ -49,6 +50,17 @@ from app.outcomes import (
     delete_outcome,
     read_outcomes,
     record_outcome,
+)
+from app.db import init_db, get_sessionmaker
+from app.models import User
+from app.auth import (
+    verify_api_key,
+    require_admin,
+    auth_disabled,
+    hash_password,
+    verify_password,
+    dummy_verify,
+    create_access_token,
 )
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -60,13 +72,46 @@ _gak = get_config("GOOGLE_API_KEY", "")
 if not _gak or _gak.startswith("AIza...") or len(_gak) < 20:
     log.warning("GOOGLE_API_KEY is not set — AI features will not work until configured via Settings.")
 
-# ── Lifespan (ClickUp poll loop) ──────────────────────────────────────────────
+# ── Lifespan (auth DB + ClickUp poll loop) ────────────────────────────────────
 _poll_task = None
+
+
+async def _seed_admin():
+    """Insert the env-configured admin user if it doesn't exist yet (idempotent)."""
+    email = (get_config("ADMIN_EMAIL", "") or "").strip().lower()
+    password = get_config("ADMIN_PASSWORD", "")
+    if not email or not password:
+        log.info("No ADMIN_EMAIL/ADMIN_PASSWORD set — skipping admin seed")
+        return
+    sm = get_sessionmaker()
+    try:
+        async with sm() as session:
+            existing = await session.execute(select(User).where(User.email == email))
+            if existing.scalar_one_or_none():
+                log.info("Admin user already exists: %s", email)
+                return
+            session.add(User(email=email, password_hash=hash_password(password), is_admin=True))
+            await session.commit()
+            log.info("Seeded admin user: %s", email)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Admin seed skipped/failed: %s", exc)
 
 
 @asynccontextmanager
 async def lifespan(app_: FastAPI):
     global _poll_task
+    # Auth/DB startup — fail loud rather than silently serving an open API.
+    if auth_disabled():
+        log.warning("AUTH_DISABLED=1 — API is OPEN (development mode). Never use this in production.")
+    else:
+        if not get_config("JWT_SECRET"):
+            raise RuntimeError(
+                "JWT_SECRET must be set when auth is enabled. "
+                "Set AUTH_DISABLED=1 for local dev without auth."
+            )
+        await init_db()
+        await _seed_admin()
+
     if get_config("CLICKUP_API_TOKEN") and get_config("CLICKUP_LIST_ID"):
         from app.poller import clickup_poll_loop
         _poll_task = asyncio.create_task(clickup_poll_loop())
@@ -113,28 +158,59 @@ def _content_text(content) -> str:
     return str(content) if content else ""
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
-
-async def verify_api_key(request: Request):
-    secret = get_config("API_SECRET")
-    if not secret:
-        return  # Auth not configured — development mode
-    auth = request.headers.get("Authorization", "")
-    if not secrets.compare_digest(auth, f"Bearer {secret}"):
-        raise HTTPException(status_code=401, detail="Unauthorized")
+# verify_api_key / require_admin are imported from app.auth (JWT-based). All the
+# existing Depends(verify_api_key) call sites work unchanged.
 
 
 class LoginRequest(BaseModel):
+    email: str
     password: str
 
 
 @app.post("/api/auth/login")
-async def login(body: LoginRequest):
-    secret = get_config("API_SECRET")
-    if not secret:
+@limiter.limit("5/minute")
+async def login(request: Request, body: LoginRequest):
+    if auth_disabled():
         return {"token": ""}  # dev mode — no auth configured
-    if not secrets.compare_digest(body.password, secret):
-        raise HTTPException(status_code=401, detail="Invalid password")
-    return {"token": secret}
+    email = (body.email or "").strip().lower()
+    sm = get_sessionmaker()
+    async with sm() as session:
+        result = await session.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+    # Identical response + timing for unknown email / bad password / inactive user.
+    if not user or not user.is_active:
+        dummy_verify(body.password)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    return {"token": create_access_token(user.id, user.email, user.is_admin)}
+
+
+class CreateUserRequest(BaseModel):
+    email: str
+    password: str
+    is_admin: bool = False
+
+
+@app.post("/api/users")
+async def create_user(body: CreateUserRequest, _auth=Depends(require_admin)):
+    if auth_disabled():
+        raise HTTPException(400, "User management is unavailable in AUTH_DISABLED mode")
+    email = (body.email or "").strip().lower()
+    if not email or not body.password:
+        raise HTTPException(400, "email and password are required")
+    sm = get_sessionmaker()
+    async with sm() as session:
+        existing = await session.execute(select(User).where(User.email == email))
+        if existing.scalar_one_or_none():
+            raise HTTPException(409, "A user with that email already exists")
+        session.add(User(
+            email=email,
+            password_hash=hash_password(body.password),
+            is_admin=body.is_admin,
+        ))
+        await session.commit()
+    return {"ok": True, "email": email, "is_admin": body.is_admin}
 
 
 # ── Request / response models ─────────────────────────────────────────────────
@@ -685,7 +761,7 @@ async def get_leaderboard(period: str = "all", _auth=Depends(verify_api_key)):
 async def health():
     return {
         "status": "ok",
-        "auth_required": bool(get_config("API_SECRET")),
+        "auth_required": not auth_disabled(),
         "model": BULK_MODEL,
         "brain_mcp": bool(get_config("BRAIN_MCP_URL")),
         "linkedin_mcp": bool(get_config("LINKEDIN_MCP_URL")),
